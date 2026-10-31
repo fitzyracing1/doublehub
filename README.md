@@ -62,3 +62,7 @@ Steps to turn it on (the owner of the Railway project does this):
    - `DH_APP_KEY_DOUBLEHUB=<32+ random chars, e.g. openssl rand -hex 32>`
    - `DH_FIRST_PARTY=1`
 3. Redeploy, then open https://fitzyracing1.github.io/doublehub/.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE). Copyright 2026 Joshua Almeida.

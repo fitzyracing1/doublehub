@@ -1,6 +1,12 @@
 {
   "name": "doublehub",
   "private": true,
-  "scripts": { "start": "node server/server.js", "test": "node test.js && node server/test.js && node server/action-test.js && node server/firstparty-test.js" },
-  "engines": { "node": ">=18" }
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node test.js && node server/test.js && node server/action-test.js && node server/firstparty-test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0"
 }
