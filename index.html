@@ -31,4 +31,8 @@ const org=document.querySelector('[name=owner]:checked').value==='org'?$('org').
 try{const m=M.build(o);$('err').textContent='';$('out').textContent=JSON.stringify(m,null,2);$('manifest').value=JSON.stringify(m);$('f').action=M.createUrl(org);$('install').textContent=M.installUrl(o.name);$('badge').value=M.badge(o.name);$('f').querySelector('button').disabled=false}
 catch(e){$('err').textContent=e.message;$('f').querySelector('button').disabled=true}}
 document.addEventListener('input',upd);upd();
-</script></body></html>
+</script><section><h2>Embed two-layer sign-in on your page</h2>
+<p>Visitors authorize GitHub, then approve doublehub for your site. See DESIGN.md.</p>
+<pre>&lt;script src="https://fitzyracing1.github.io/doublehub/embed.js"
+  data-server="https://YOUR-DOUBLEHUB-SERVER" data-app="acme"&gt;&lt;/script&gt;</pre></section>
+</body></html>
