@@ -29,4 +29,16 @@ Put this on your page. Visitors authorize GitHub (layer 1), then approve doubleh
 addEventListener('doublehub:grant', e => fetch('/api/doublehub', {method:'POST', body: e.detail.grant}));
 </script>
 ```
-Your backend redeems the grant at `POST /token` with its app key. Run the server with `node server/server.js` (config via env, see DESIGN.md). Tests: `node test.js && node server/test.js`.
+Your backend redeems the grant at `POST /token` with its app key and gets a doublehub **session** (never the GitHub token).
+
+### Layer 3: approve everything that leaves
+Every outbound action needs the user's explicit, single-use approval:
+```js
+// GitHub call: your backend POSTs /action {app, origin, session, method, path, body, summary} -> {action_id}
+const approval = await doublehub.approve(action_id);   // popup shows site, app, exact request
+// your backend POSTs /action/execute {same request, action_id, approval} -> doublehub runs it
+
+// Data to your own server (dest must be in the app's send_to list):
+await doublehub.send('https://api.acme.dev/ingest', { email });  // popup, then POST {payload, receipt, dest}
+```
+Your server **must reject data without a receipt** that `POST /receipt/verify` accepts. Users see every approved/denied action at `GET /audit`. No "always allow" by default. Details in DESIGN.md. Run the server with `node server/server.js` (config via env, see DESIGN.md). Tests: `npm test`.

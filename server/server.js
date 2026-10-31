@@ -1,5 +1,5 @@
 'use strict';
-// doublehub two-layer auth server. Zero dependencies: node server/server.js
+// doublehub three-layer auth server (GitHub login, per-site consent, per-action approval). Zero dependencies: node server/server.js
 const http = require('http');
 const L = require('./lib');
 
@@ -10,6 +10,15 @@ function createServer(cfg = L.loadConfig(), store = L.createStore(), fetchImpl =
     res.end(typeof body === 'string' ? body : JSON.stringify(body));
   };
   const readBody = req => new Promise((ok, no) => { let d = ''; req.on('data', c => { d += c; if (d.length > 1e5) no(new Error('too big')); }); req.on('end', () => ok(d)); });
+  const appAuth = (req, id) => { const app = cfg.apps[id];
+    return app && app.app_key && L.safeEq((req.headers.authorization || '').replace(/^Bearer /, ''), app.app_key) ? app : null; };
+  const session = (b, app) => { const c = L.verifyGrant(b.session, cfg.secret, { app: app.id, origin: L.normOrigin(b.origin || ''), isRevoked: x => store.isRevoked(x) });
+    if (c.typ !== 'session') throw new Error('not a session'); return c; };
+  const ghReq = (c, b) => { const method = String(b.method || '').toUpperCase();
+    if (!L.METHODS.includes(method) || !L.safeApiPath(b.path)) throw new Error('bad method or path');
+    return { kind: 'github', app: c.app, origin: c.origin, sub: c.sub, method, path: b.path, body: b.body === undefined ? null : b.body }; };
+  const user = req => { try { const c = L.verifyGrant(decodeURIComponent(L.cookie(req, 'dh_u')), cfg.secret); return c.typ === 'user' ? c.sub : null; } catch { return null; } };
+  const userCookie = sub => 'dh_u=' + L.signGrant({ typ: 'user', sub }, cfg.secret, 28800) + '; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800' + (cfg.base.startsWith('https:') ? '; Secure' : '');
   const parse = (d, type) => type && type.includes('json') ? JSON.parse(d || '{}') : Object.fromEntries(new URLSearchParams(d));
 
   return http.createServer(async (req, res) => {
@@ -62,19 +71,110 @@ function createServer(cfg = L.loadConfig(), store = L.createStore(), fetchImpl =
         let msg;
         if (b.decision === 'allow') {
           store.grantConsent(p.app, p.origin, p.sub, { token: p.token, login: p.login });
-          msg = { type: 'doublehub:grant', grant: L.signGrant({ app: p.app, origin: p.origin, sub: p.sub, login: p.login }, cfg.secret) };
+          msg = { type: 'doublehub:grant', grant: L.signGrant({ typ: 'grant', app: p.app, origin: p.origin, sub: p.sub, login: p.login }, cfg.secret) };
         } else msg = { type: 'doublehub:denied' };
         // targetOrigin is the exact bound origin: another site can never receive it.
         return send(res, 200, `<!doctype html><meta charset=utf-8><p>Done. You can close this window.</p><script>
-if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g, '\\u003c')}, ${JSON.stringify(p.origin).replace(/</g, '\\u003c')}); window.close();</script>`, 'text/html');
+if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g, '\\u003c')}, ${JSON.stringify(p.origin).replace(/</g, '\\u003c')}); window.close();</script>`, 'text/html', { 'set-cookie': userCookie(p.sub) });
       }
-      // Company backend redeems a grant for the GitHub token (both layers done)
+      // Company backend redeems a grant for a doublehub SESSION (never the GitHub token; the server keeps it).
       if (u.pathname === '/token' && req.method === 'POST') {
-        const b = parse(await readBody(req), 'json'), app = cfg.apps[b.app];
-        if (!app || !app.app_key || !L.safeEq((req.headers.authorization || '').replace(/^Bearer /, ''), app.app_key)) return send(res, 401, { error: 'unauthorized' });
+        const b = parse(await readBody(req), 'json'), app = appAuth(req, b.app); if (!app) return send(res, 401, { error: 'unauthorized' });
         const c = L.verifyGrant(b.grant, cfg.secret, { app: app.id, origin: L.normOrigin(b.origin || ''), isRevoked: x => store.isRevoked(x) });
+        if (c.typ !== 'grant' || !store.useOnce(c.jti)) return send(res, 400, { error: 'grant not usable' });
         const con = store.getConsent(c.app, c.origin, c.sub);
-        return send(res, 200, { login: con.login, sub: c.sub, access_token: con.token });
+        return send(res, 200, { login: con.login, sub: c.sub, session: L.signGrant({ typ: 'session', app: c.app, origin: c.origin, sub: c.sub }, cfg.secret, 3600) });
+      }
+      // Layer 3a: company asks to call GitHub on the user's behalf -> pending, needs user approval.
+      if (u.pathname === '/action' && req.method === 'POST') {
+        const b = parse(await readBody(req), 'json'), app = appAuth(req, b.app); if (!app) return send(res, 401, { error: 'unauthorized' });
+        const c = session(b, app), r = ghReq(c, b);
+        const id = L.rand(), h = L.reqHash(r);
+        store.putAction(id, { kind: 'github', h, r, summary: String(b.summary || '').slice(0, 500), csrf: L.rand(), app: c.app, origin: c.origin, sub: c.sub });
+        return send(res, 202, { action_id: id, approve_url: cfg.base + '/approve?id=' + encodeURIComponent(id), request_hash: h, expires_in: 120 });
+      }
+      if (u.pathname === '/action/execute' && req.method === 'POST') {
+        const b = parse(await readBody(req), 'json'), app = appAuth(req, b.app); if (!app) return send(res, 401, { error: 'unauthorized' });
+        const c = session(b, app), r = ghReq(c, b), h = L.reqHash(r);
+        let a; try { a = L.verifyGrant(b.approval, cfg.secret, { app: c.app, origin: c.origin }); } catch (e) { return send(res, 403, { error: 'approval ' + e.message }); }
+        const act = store.getAction(b.action_id || '');
+        if (a.typ !== 'approval' || a.aid !== b.action_id || a.sub !== c.sub || !act || act.kind !== 'github') return send(res, 403, { error: 'no matching approved action' });
+        if (!L.safeEq(a.h, h) || !L.safeEq(act.h, h)) { store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: 'blocked: request changed after approval', method: r.method, path: r.path }); return send(res, 403, { error: 'request hash mismatch' }); }
+        if (!store.useOnce(a.jti)) return send(res, 403, { error: 'approval already used' });
+        store.takeAction(b.action_id);
+        const con = store.getConsent(c.app, c.origin, c.sub); if (!con) return send(res, 403, { error: 'revoked' });
+        const gr = await fetchImpl('https://api.github.com' + r.path, { method: r.method, headers: { authorization: 'Bearer ' + con.token, accept: 'application/vnd.github+json', 'user-agent': 'doublehub', ...(r.body != null ? { 'content-type': 'application/json' } : {}) }, ...(r.body != null ? { body: JSON.stringify(r.body) } : {}) });
+        store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: 'executed', method: r.method, path: r.path, hash: h, status: gr.status });
+        const txt = await gr.text(); let data; try { data = JSON.parse(txt); } catch { data = txt; }
+        return send(res, 200, { status: gr.status, data });
+      }
+      // Layer 3b: site -> company server data. Opened as a popup by doublehub.send(dest, payload).
+      if (u.pathname === '/send' && req.method === 'GET') {
+        const app = cfg.apps[q.get('app')], origin = L.normOrigin(q.get('origin') || '');
+        if (!L.originAllowed(app, origin)) return send(res, 403, 'Origin not allowed.', 'text/plain');
+        let dest; try { dest = new URL(q.get('dest')); } catch { return send(res, 400, 'Bad destination.', 'text/plain'); }
+        if (!app.send_to.includes(dest.origin)) return send(res, 403, 'Destination not allowed for this app.', 'text/plain');
+        const raw = q.get('payload') || ''; if (raw.length > 8000) return send(res, 413, 'Payload too large.', 'text/plain');
+        let payload; try { payload = JSON.parse(Buffer.from(raw, 'base64url').toString()); } catch { return send(res, 400, 'Bad payload.', 'text/plain'); }
+        const sub = user(req); if (!sub || !store.getConsent(app.id, origin, sub)) return send(res, 403, 'Connect this site with doublehub first.', 'text/plain');
+        const r = { kind: 'send', app: app.id, origin, sub, dest: dest.href, payload }, id = L.rand();
+        store.putAction(id, { kind: 'send', h: L.reqHash(r), r, csrf: L.rand(), app: app.id, origin, sub });
+        return send(res, 302, '', 'text/plain', { location: '/approve?id=' + encodeURIComponent(id) });
+      }
+      // The approval screen: only the signed-in doublehub user the action belongs to can decide.
+      if (u.pathname === '/approve' && req.method === 'GET') {
+        const act = store.getAction(q.get('id') || ''); if (!act) return send(res, 400, 'Expired. Nothing was sent.', 'text/plain');
+        if (user(req) !== act.sub) return send(res, 403, 'This request belongs to another doublehub user. Nothing was sent.', 'text/plain');
+        const app = cfg.apps[act.app], r = act.r, body = JSON.stringify(act.kind === 'send' ? r.payload : r.body, null, 2) || '(none)';
+        const what = act.kind === 'send' ? `send this data to <b>${L.esc(r.dest)}</b>` : `call GitHub as you: <code>${L.esc(r.method)} https://api.github.com${L.esc(r.path)}</code>`;
+        return send(res, 200, `<!doctype html><meta charset=utf-8><title>doublehub: approve action</title>
+<body style="font:16px system-ui;max-width:560px;margin:30px auto">
+<h2>Approve this one action?</h2>
+<p>Site: <b>${L.esc(act.origin)}</b><br>App: <b>${L.esc(app.name || app.id)}</b></p>
+<p>It wants to ${what}.</p>
+${act.summary ? `<p>Site's description (unverified): <i>${L.esc(act.summary)}</i></p>` : ''}
+<p>Exact data that will leave:</p><pre style="background:#f4f4f4;padding:8px;max-height:240px;overflow:auto;white-space:pre-wrap">${L.esc(body.slice(0, 4000))}${body.length > 4000 ? '\n... (' + body.length + ' bytes total)' : ''}</pre>
+<p><small>Approval is single-use, for exactly this request, and expires in 1 minute. Request hash <code>${L.esc(act.h.slice(0, 16))}</code>.</small></p>
+<form method=post action="/approve"><input type=hidden name=id value="${L.esc(q.get('id'))}"><input type=hidden name=csrf value="${L.esc(act.csrf)}">
+<button name=decision value=allow>Allow once</button> <button name=decision value=deny>Deny</button></form>
+<p><a href="/audit">My activity log</a></p>`, 'text/html');
+      }
+      if (u.pathname === '/approve' && req.method === 'POST') {
+        const b = parse(await readBody(req), req.headers['content-type']), act = store.getAction(b.id || '');
+        if (!act || !L.safeEq(b.csrf || '', act.csrf) || user(req) !== act.sub) return send(res, 400, 'Expired. Nothing was sent.', 'text/plain');
+        const base = { app: act.app, origin: act.origin, kind: act.kind, hash: act.h, ...(act.kind === 'send' ? { dest: act.r.dest } : { method: act.r.method, path: act.r.path }) };
+        let msg;
+        if (b.decision === 'allow') {
+          if (act.kind === 'send') {
+            store.takeAction(b.id);
+            msg = { type: 'doublehub:receipt', id: b.id, receipt: L.signGrant({ typ: 'receipt', app: act.app, origin: act.origin, sub: act.sub, dest: act.r.dest, h: act.h }, cfg.secret, 120) };
+          } else {
+            if (act.approved) return send(res, 400, 'Already decided.', 'text/plain');
+            act.approved = true;
+            msg = { type: 'doublehub:approval', id: b.id, approval: L.signGrant({ typ: 'approval', aid: b.id, app: act.app, origin: act.origin, sub: act.sub, h: act.h }, cfg.secret, 60) };
+          }
+          store.audit(act.sub, { ...base, decision: 'approved' });
+        } else { store.takeAction(b.id); store.audit(act.sub, { ...base, decision: 'denied' }); msg = { type: 'doublehub:denied', id: b.id }; }
+        return send(res, 200, `<!doctype html><meta charset=utf-8><p>${msg.type === 'doublehub:denied' ? 'Denied. Nothing was sent.' : 'Approved once.'} You can close this window.</p><script>
+if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g, '\\u003c')}, ${JSON.stringify(act.origin).replace(/</g, '\\u003c')}); window.close();</script>`, 'text/html');
+      }
+      // Company server verifies a doublehub.send receipt (single-use). Reject any data without a valid one.
+      if (u.pathname === '/receipt/verify' && req.method === 'POST') {
+        const b = parse(await readBody(req), 'json'), app = appAuth(req, b.app); if (!app) return send(res, 401, { error: 'unauthorized' });
+        let c; try { c = L.verifyGrant(b.receipt, cfg.secret, { app: app.id }); } catch (e) { return send(res, 403, { valid: false, error: e.message }); }
+        const h = L.reqHash({ kind: 'send', app: c.app, origin: c.origin, sub: c.sub, dest: b.dest, payload: b.payload });
+        if (c.typ !== 'receipt' || c.dest !== b.dest || !L.safeEq(c.h, h)) return send(res, 403, { valid: false, error: 'payload does not match receipt' });
+        if (!store.useOnce(c.jti)) return send(res, 403, { valid: false, error: 'receipt already used' });
+        return send(res, 200, { valid: true, sub: c.sub, origin: c.origin });
+      }
+      // The user's own log of every approved/denied/blocked action.
+      if (u.pathname === '/audit' && req.method === 'GET') {
+        const sub = user(req); if (!sub) return send(res, 403, 'Sign in with doublehub first.', 'text/plain');
+        const rows = store.auditFor(sub).reverse();
+        if ((req.headers.accept || '').includes('application/json')) return send(res, 200, { entries: rows });
+        return send(res, 200, `<!doctype html><meta charset=utf-8><title>doublehub activity</title><body style="font:14px system-ui;max-width:900px;margin:30px auto">
+<h2>Everything that left (or tried to leave) through doublehub</h2><table border=1 cellpadding=4 style="border-collapse:collapse"><tr><th>When</th><th>Decision</th><th>Site</th><th>App</th><th>What</th></tr>
+${rows.map(e => `<tr><td>${L.esc(e.at)}</td><td>${L.esc(e.decision)}</td><td>${L.esc(e.origin)}</td><td>${L.esc(e.app)}</td><td>${L.esc(e.kind === 'send' ? 'send to ' + e.dest : e.method + ' ' + e.path)}</td></tr>`).join('')}</table>`, 'text/html');
       }
       // Revoke: user (holding the grant) or company withdraws consent for that origin
       if (u.pathname === '/revoke' && req.method === 'POST') {

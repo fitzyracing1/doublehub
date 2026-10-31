@@ -41,7 +41,7 @@ function verifyGrant(token, secret, { origin, app, now = Date.now(), isRevoked =
 
 // In-memory stores (swap for Redis/DB in production).
 function createStore() {
-  const pending = new Map(), consents = new Map(), revokedJti = new Set();
+  const pending = new Map(), consents = new Map(), revokedJti = new Set(), actions = new Map(), used = new Set(), audits = new Map();
   return {
     putState(state, v, ttlMs = 600000, now = Date.now()) { pending.set('s:' + state, { ...v, exp: now + ttlMs }); },
     // single-use: always deleted on read
@@ -53,6 +53,13 @@ function createStore() {
     grantConsent(app, origin, sub, data) { consents.set(this.consentKey(app, origin, sub), data); },
     getConsent(app, origin, sub) { return consents.get(this.consentKey(app, origin, sub)); },
     revoke(app, origin, sub, jti) { consents.delete(this.consentKey(app, origin, sub)); if (jti) revokedJti.add(jti); },
+    // Layer 3: pending outbound actions (single-use, short expiry) + per-user audit log
+    putAction(id, v, ttlMs = 120000, now = Date.now()) { actions.set(id, { ...v, exp: now + ttlMs }); },
+    getAction(id, now = Date.now()) { const v = actions.get(id); if (v && v.exp <= now) { actions.delete(id); return null; } return v || null; },
+    takeAction(id, now = Date.now()) { const v = this.getAction(id, now); actions.delete(id); return v; },
+    useOnce(jti) { if (used.has(jti)) return false; used.add(jti); return true; },
+    audit(sub, e) { const l = audits.get(sub) || []; l.push({ at: new Date().toISOString(), ...e }); if (l.length > 500) l.shift(); audits.set(sub, l); },
+    auditFor(sub) { return (audits.get(sub) || []).slice(); },
     isRevoked(c) { return revokedJti.has(c.jti) || !consents.has(this.consentKey(c.app, c.origin, c.sub)); },
   };
 }
@@ -65,10 +72,20 @@ function loadConfig(env = process.env) {
     const k = id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
     a.id = id; a.client_secret = env['GITHUB_CLIENT_SECRET_' + k]; a.app_key = env['DH_APP_KEY_' + k];
     a.origins = (a.origins || []).map(normOrigin).filter(Boolean);
+    a.send_to = (a.send_to || []).map(normOrigin).filter(Boolean); // company servers doublehub.send may target
   }
   return { apps, secret: env.DH_SECRET, base: (env.DH_BASE_URL || 'http://localhost:8787').replace(/\/$/, ''), port: +env.PORT || 8787 };
 }
 
+// Canonical hash of exactly what will leave: binds approval to app+origin+user+request.
+function canon(v) { return Array.isArray(v) ? '[' + v.map(canon).join(',') + ']' : v && typeof v === 'object' ?
+  '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}' : JSON.stringify(v === undefined ? null : v); }
+function reqHash(r) { return crypto.createHash('sha256').update(canon(r)).digest('base64url'); }
+// GitHub API path guard: relative path only, no traversal / scheme / host smuggling.
+function safeApiPath(p) { return typeof p === 'string' && /^\/[A-Za-z0-9._~\-\/?=&%,+:]*$/.test(p) && !p.includes('..') && !p.startsWith('//'); }
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+function cookie(req, name) { const m = (req.headers.cookie || '').match(new RegExp('(?:^|; )' + name + '=([^;]+)')); return m ? m[1] : ''; }
+
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-module.exports = { rand, pkce, challengeFor, normOrigin, originAllowed, signGrant, verifyGrant, createStore, loadConfig, safeEq, esc };
+module.exports = { rand, pkce, challengeFor, normOrigin, originAllowed, signGrant, verifyGrant, createStore, loadConfig, safeEq, esc, canon, reqHash, safeApiPath, METHODS, cookie };
