@@ -74,7 +74,7 @@ function loadConfig(env = process.env) {
     a.origins = (a.origins || []).map(normOrigin).filter(Boolean);
     a.send_to = (a.send_to || []).map(normOrigin).filter(Boolean); // company servers doublehub.send may target
   }
-  return { apps, secret: env.DH_SECRET, base: (env.DH_BASE_URL || 'http://localhost:8787').replace(/\/$/, ''), port: +env.PORT || 8787 };
+  return { apps, secret: env.DH_SECRET, base: (env.DH_BASE_URL || 'http://localhost:8787').replace(/\/$/, ''), port: +env.PORT || 8787, demo: env.DH_DEMO === '1' };
 }
 
 // Canonical hash of exactly what will leave: binds approval to app+origin+user+request.

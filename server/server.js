@@ -2,6 +2,7 @@
 // doublehub three-layer auth server (GitHub login, per-site consent, per-action approval). Zero dependencies: node server/server.js
 const http = require('http');
 const L = require('./lib');
+const { demoHandler } = require('./demo');
 
 function createServer(cfg = L.loadConfig(), store = L.createStore(), fetchImpl = globalThis.fetch) {
   const send = (res, code, body, type = 'application/json', extra = {}) => {
@@ -21,9 +22,11 @@ function createServer(cfg = L.loadConfig(), store = L.createStore(), fetchImpl =
   const userCookie = sub => 'dh_u=' + L.signGrant({ typ: 'user', sub }, cfg.secret, 28800) + '; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800' + (cfg.base.startsWith('https:') ? '; Secure' : '');
   const parse = (d, type) => type && type.includes('json') ? JSON.parse(d || '{}') : Object.fromEntries(new URLSearchParams(d));
 
+  const demo = cfg.demo ? demoHandler(cfg, fetchImpl) : null;
   return http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, cfg.base), q = u.searchParams;
+      if (demo && await demo(req, res, u, readBody)) return;
       // Layer 1 start: popup lands here from embed.js
       if (u.pathname === '/authorize' && req.method === 'GET') {
         const app = cfg.apps[q.get('app')], origin = q.get('origin');

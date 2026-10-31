@@ -42,3 +42,16 @@ const approval = await doublehub.approve(action_id);   // popup shows site, app,
 await doublehub.send('https://api.acme.dev/ingest', { email });  // popup, then POST {payload, receipt, dest}
 ```
 Your server **must reject data without a receipt** that `POST /receipt/verify` accepts. Users see every approved/denied action at `GET /audit`. No "always allow" by default. Details in DESIGN.md. Run the server with `node server/server.js` (config via env, see DESIGN.md). Tests: `npm test`.
+
+## Live demo (dogfood)
+
+`demo.html` on the Pages site uses doublehub itself through app `doublehub-demo`. The server has a small built-in demo company backend (`server/demo.js`, `/demo/*` routes). It only runs when `DH_DEMO=1`.
+
+Steps to turn it on (the owner of the Railway project does this):
+1. Create a GitHub OAuth App at https://github.com/settings/applications/new. Homepage: `https://fitzyracing1.github.io/doublehub/`. Authorization callback URL: `https://doublehub-production.up.railway.app/callback`. Copy the Client ID and generate a client secret.
+2. Set these Railway variables on service `doublehub`:
+   - `DH_APPS={"doublehub-demo":{"client_id":"<CLIENT_ID>","origins":["https://fitzyracing1.github.io"],"send_to":["https://doublehub-production.up.railway.app"]}}`
+   - `GITHUB_CLIENT_SECRET_DOUBLEHUB_DEMO=<client secret>`
+   - `DH_APP_KEY_DOUBLEHUB_DEMO=<32+ random chars, e.g. openssl rand -hex 32>`
+   - `DH_DEMO=1`
+3. Redeploy, then open https://fitzyracing1.github.io/doublehub/demo.html.
