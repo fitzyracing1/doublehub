@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><title>doublehub: finish your GitHub App</title>
+<style>body{font:16px system-ui;max-width:720px;margin:40px auto;padding:0 16px}pre,textarea{width:100%;background:#f4f4f4;padding:8px;overflow:auto}</style>
+<h1>doublehub</h1><div id="s">Finishing your GitHub App...</div>
+<script>
+const code=new URLSearchParams(location.search).get('code'),s=document.getElementById('s');
+if(!code){s.textContent='No code in the link. Start again from the doublehub page.'}else{
+fetch('https://api.github.com/app-manifests/'+encodeURIComponent(code)+'/conversions',{method:'POST',headers:{Accept:'application/vnd.github+json'}})
+.then(r=>r.ok?r.json():Promise.reject(r.status)).then(a=>{
+const pem=URL.createObjectURL(new Blob([a.pem],{type:'application/x-pem-file'}));
+const inst='https://github.com/apps/'+a.slug+'/installations/new';
+s.innerHTML=`<p>Your app <b>${a.name}</b> is created (ID ${a.id}).</p>
+<p><a download="${a.slug}.private-key.pem" href="${pem}">Download your private key</a>. Save it now: this page is the only time it's shown, and it never leaves your browser.</p>
+<p>Install link: <a href="${inst}">${inst}</a></p>
+<p>Badge:</p><textarea rows=2>[![Install on GitHub](https://img.shields.io/badge/Install%20on-GitHub-black?logo=github)](${inst})</textarea>
+<p>Webhook secret and client secret are in your app settings: <a href="${a.html_url}">${a.html_url}</a></p>`})
+.catch(e=>{s.innerHTML=`<p>Couldn't finish in the browser (${e}). Run this within an hour of creating the app:</p><pre>curl -X POST https://api.github.com/app-manifests/${code}/conversions</pre>`})}
+</script>

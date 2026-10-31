@@ -27,7 +27,7 @@
       m.hook_attributes = { url: o.webhook, active: true };
       m.default_events = (o.events || []).filter(e => EVENTS.includes(e));
     } else m.default_events = [];
-    if (o.redirect) m.redirect_url = o.redirect;
+    m.redirect_url = o.redirect || 'https://fitzyracing1.github.io/doublehub/callback.html';
     if (o.callbacks && o.callbacks.length) m.callback_urls = o.callbacks;
     if (o.setup) m.setup_url = o.setup;
     return m;
