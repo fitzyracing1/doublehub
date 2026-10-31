@@ -1,4 +1,4 @@
-# GitHub App maker
+# doublehub
 
 A static page (`index.html`, works on GitHub Pages, no backend) that lets any company turn its service into a public GitHub App using GitHub's [manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest).
 
