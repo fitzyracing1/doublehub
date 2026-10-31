@@ -1,9 +1,19 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>doublehub: make a GitHub App for your service</title>
-<style>body{font:16px system-ui;max-width:760px;margin:2em auto;padding:0 1em}label{display:block;margin:.4em 0}fieldset{margin:1em 0}input[type=text],input[type=url]{width:100%;padding:.4em}pre,textarea{width:100%;background:#f4f4f4;padding:.6em;white-space:pre-wrap}button{font-size:1.1em;padding:.6em 1.2em;cursor:pointer}.err{color:#b00}</style>
+<title>doublehub</title>
+<style>body{font:16px system-ui;max-width:760px;margin:2em auto;padding:0 1em}label{display:block;margin:.4em 0}fieldset{margin:1em 0}input[type=text],input[type=url]{width:100%;padding:.4em}pre,textarea{width:100%;background:#f4f4f4;padding:.6em;white-space:pre-wrap}button{font-size:1.1em;padding:.6em 1.2em;cursor:pointer}.err{color:#b00}#dh{border:1px solid #ccc;border-radius:8px;padding:1em;margin:1em 0}#dh table{border-collapse:collapse;width:100%;font-size:14px}#dh td,#dh th{border:1px solid #ddd;padding:4px;text-align:left}#dh img{border-radius:50%;vertical-align:middle}.hide{display:none}</style>
 <script src="manifest.js"></script></head><body>
-<h1>doublehub</h1><p>Make a public GitHub App for your service.</p>
-<p><a href="demo.html">Try the live doublehub demo</a> (this site, using doublehub).</p>
+<h1>doublehub</h1>
+<section id="dh"><h2>Your doublehub</h2>
+<div id="signedout"><p>Step 1: sign in with GitHub. Step 2: approve doublehub for this site. This site never sees your GitHub token, and every call it makes for you needs your OK first.</p>
+<script src="embed.js" data-server="https://doublehub-production.up.railway.app" data-app="doublehub" data-label="Sign in with GitHub (doublehub)"></script>
+<p class="err" id="dherr"></p></div>
+<div id="signedin" class="hide">
+<p>Signed in as <b id="login"></b>. <button id="signout" type="button">Sign out</button></p>
+<h3>Your GitHub identity</h3><p>doublehub asks before it calls GitHub. <button id="idbtn" type="button">Load my GitHub profile (GET /user)</button></p><div id="ident"></div>
+<h3>Connected sites</h3><table id="sites"></table>
+<h3>Activity log</h3><p><small>Everything that left, or tried to leave, through doublehub.</small> <button id="auditbtn" type="button">Refresh</button></p><table id="audit"></table>
+</div></section>
+<h2>App maker</h2><p>Make a public GitHub App for your service. Works signed in or signed out.</p>
 <p>Fill this in, click the button, and GitHub creates the app on <b>your</b> account or org. Nothing is sent anywhere else — this page has no backend.</p>
 <label>Service name (becomes app name, max 34 chars) <input type="text" id="name" maxlength="34" placeholder="Acme Lights"></label>
 <label>Service URL <input type="url" id="url" placeholder="https://acme.dev"></label>
@@ -36,4 +46,29 @@ document.addEventListener('input',upd);upd();
 <p>Visitors authorize GitHub, then approve doublehub for your site. See DESIGN.md.</p>
 <pre>&lt;script src="https://fitzyracing1.github.io/doublehub/embed.js"
   data-server="https://YOUR-DOUBLEHUB-SERVER" data-app="acme"&gt;&lt;/script&gt;</pre></section>
-</body></html>
+<script>
+(function(){
+var S='https://doublehub-production.up.railway.app',$=function(i){return document.getElementById(i)},ss=window.sessionStorage;
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function post(p,b){return fetch(S+p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().then(function(j){if(!r.ok){var e=new Error(j.error||r.status);e.status=r.status;throw e}return j})})}
+function sess(){return ss.getItem('dh_session')}
+function out(){ss.removeItem('dh_session');ss.removeItem('dh_login');$('signedin').className='hide';$('signedout').className=''}
+function guard(e){if(e.status===401){out();$('dherr').textContent='Your session ended. Sign in again.'}else throw e}
+function show(){$('login').textContent=ss.getItem('dh_login');$('signedout').className='hide';$('signedin').className='';sites();audit()}
+function sites(){post('/app/sites',{session:sess()}).then(function(r){
+$('sites').innerHTML='<tr><th>Site</th><th>App</th><th></th></tr>'+(r.sites.map(function(x,i){return '<tr><td>'+esc(x.origin)+'</td><td>'+esc(x.app)+'</td><td><button type="button" data-i="'+i+'">Revoke</button></td></tr>'}).join('')||'<tr><td colspan=3>None</td></tr>');
+$('sites').querySelectorAll('button').forEach(function(b){var x=r.sites[b.dataset.i];b.onclick=function(){
+if(!confirm('Revoke '+x.app+' on '+x.origin+'?'))return;
+post('/app/revoke',{session:sess(),app:x.app,origin:x.origin}).then(function(){sites();audit()},guard).catch(function(e){alert(e.message)})}})},guard).catch(function(e){$('sites').innerHTML='<tr><td>'+esc(e.message)+'</td></tr>'})}
+function audit(){post('/app/audit',{session:sess()}).then(function(r){
+$('audit').innerHTML='<tr><th>When</th><th>Decision</th><th>Site</th><th>What</th></tr>'+(r.entries.map(function(e){return '<tr><td>'+esc(e.at)+'</td><td>'+esc(e.decision)+'</td><td>'+esc(e.origin)+'</td><td>'+esc(e.kind==='send'?'send to '+e.dest:e.kind==='consent'?'site connection':e.method+' '+e.path)+'</td></tr>'}).join('')||'<tr><td colspan=4>Nothing yet</td></tr>')},guard).catch(function(e){$('audit').innerHTML='<tr><td>'+esc(e.message)+'</td></tr>'})}
+window.addEventListener('doublehub:grant',function(ev){post('/app/token',{grant:ev.detail.grant}).then(function(t){ss.setItem('dh_session',t.session);ss.setItem('dh_login',t.login);$('dherr').textContent='';show()},function(e){$('dherr').textContent='Sign-in stopped: '+e.message})});
+$('signout').onclick=out;$('auditbtn').onclick=audit;
+$('idbtn').onclick=function(){$('ident').textContent='Waiting for your approval...';var id;
+post('/app/identity/request',{session:sess()}).then(function(a){id=a.action_id;return doublehub.approve(id)})
+.then(function(ap){return post('/app/identity',{session:sess(),action_id:id,approval:ap})})
+.then(function(r){var u=r.user;$('ident').innerHTML=(u.avatar_url&&/^https:\/\//.test(u.avatar_url)?'<img src="'+esc(u.avatar_url)+'" width=48 height=48 alt=""> ':'')+'<a href="'+esc(/^https:\/\//.test(u.html_url||'')?u.html_url:'#')+'">'+esc(u.login)+'</a> '+esc(u.name||'')+'<br><small>'+esc(u.public_repos)+' public repos, '+esc(u.followers)+' followers, on GitHub since '+esc((u.created_at||'').slice(0,10))+'</small>';audit()},function(e){$('ident').textContent='Stopped: '+e.message;if(e.status===401)guard(e);audit()})};
+fetch(S+'/app/token',{method:'OPTIONS'}).then(function(r){if(!r.ok)$('dherr').textContent='Sign-in is not switched on yet on the doublehub server. The App maker below still works.'}).catch(function(){$('dherr').textContent='The doublehub server is unreachable right now. The App maker below still works.'});
+if(sess())show();
+})();
+</script></body></html>

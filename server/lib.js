@@ -59,6 +59,7 @@ function createStore() {
     takeAction(id, now = Date.now()) { const v = this.getAction(id, now); actions.delete(id); return v; },
     useOnce(jti) { if (used.has(jti)) return false; used.add(jti); return true; },
     audit(sub, e) { const l = audits.get(sub) || []; l.push({ at: new Date().toISOString(), ...e }); if (l.length > 500) l.shift(); audits.set(sub, l); },
+    consentsFor(sub) { const out = []; for (const [k, v] of consents) { const [app, origin, s] = k.split('|'); if (s === sub) out.push({ app, origin, login: v.login }); } return out; },
     auditFor(sub) { return (audits.get(sub) || []).slice(); },
     isRevoked(c) { return revokedJti.has(c.jti) || !consents.has(this.consentKey(c.app, c.origin, c.sub)); },
   };
@@ -74,7 +75,7 @@ function loadConfig(env = process.env) {
     a.origins = (a.origins || []).map(normOrigin).filter(Boolean);
     a.send_to = (a.send_to || []).map(normOrigin).filter(Boolean); // company servers doublehub.send may target
   }
-  return { apps, secret: env.DH_SECRET, base: (env.DH_BASE_URL || 'http://localhost:8787').replace(/\/$/, ''), port: +env.PORT || 8787, demo: env.DH_DEMO === '1' };
+  return { apps, secret: env.DH_SECRET, base: (env.DH_BASE_URL || 'http://localhost:8787').replace(/\/$/, ''), port: +env.PORT || 8787, firstParty: env.DH_FIRST_PARTY === '1' };
 }
 
 // Canonical hash of exactly what will leave: binds approval to app+origin+user+request.
