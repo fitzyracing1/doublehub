@@ -1,0 +1,12 @@
+const M=require('./manifest.js'),assert=require('assert'),{execFileSync}=require('child_process');
+const ALLOWED=['name','url','hook_attributes','redirect_url','callback_urls','setup_url','description','public','default_events','default_permissions','request_oauth_on_install','setup_on_update'];
+const out=execFileSync('node',['cli.js','--name','Acme Lights','--url','https://acme.dev','--webhook','https://acme.dev/h','--perm','checks=write','--event','check_suite'],{stdio:['ignore','pipe','ignore']}).toString();
+const m=JSON.parse(out);
+Object.keys(m).forEach(k=>assert(ALLOWED.includes(k),'unknown key '+k));
+assert.strictEqual(m.public,true);assert.deepStrictEqual(m.default_permissions,{metadata:'read',checks:'write'});
+assert.deepStrictEqual(m.hook_attributes,{url:'https://acme.dev/h',active:true});assert.deepStrictEqual(m.default_events,['check_suite']);
+const n=M.build({name:'X',url:'https://x.io',events:['push']});assert(!n.hook_attributes);assert.deepStrictEqual(n.default_events,[]);
+assert.throws(()=>M.build({name:'X',url:'ftp://x'}));
+assert.strictEqual(M.createUrl('acme'),'https://github.com/organizations/acme/settings/apps/new');
+assert.strictEqual(M.installUrl('Acme Lights'),'https://github.com/apps/acme-lights/installations/new');
+console.log('all tests lit');
