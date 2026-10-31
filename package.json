@@ -1,0 +1,6 @@
+{
+  "name": "doublehub",
+  "private": true,
+  "scripts": { "start": "node server/server.js", "test": "node test.js && node server/test.js" },
+  "engines": { "node": ">=18" }
+}
