@@ -1,20 +1,103 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>doublehub</title>
-<style>body{font:16px system-ui;max-width:760px;margin:2em auto;padding:0 1em}label{display:block;margin:.4em 0}fieldset{margin:1em 0}input[type=text],input[type=url]{width:100%;padding:.4em}pre,textarea{width:100%;background:#f4f4f4;padding:.6em;white-space:pre-wrap}button{font-size:1.1em;padding:.6em 1.2em;cursor:pointer}.err{color:#b00}#dh{border:1px solid #ccc;border-radius:8px;padding:1em;margin:1em 0}#dh table{border-collapse:collapse;width:100%;font-size:14px}#dh td,#dh th{border:1px solid #ddd;padding:4px;text-align:left}#dh img{border-radius:50%;vertical-align:middle}.hide{display:none}</style>
+<title>doublehub: two-layer GitHub sign-in</title>
+<meta name="description" content="Two-layer GitHub sign-in, and your approval for everything that leaves.">
+<meta name="theme-color" content="#4f46e5">
+<style>
+:root{--bg:#f7f8fa;--card:#fff;--fg:#14171c;--muted:#59606b;--line:#e3e6eb;--accent:#4f46e5;--accent-fg:#fff;--soft:#eef0ff;--code:#f1f3f6;--ok:#0f7b3f;--err:#b42318;--shadow:0 1px 2px rgba(16,24,40,.05),0 4px 16px rgba(16,24,40,.06);color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1016;--card:#161a22;--fg:#e8eaee;--muted:#a3aab6;--line:#2a303b;--accent:#8b85ff;--accent-fg:#0d1016;--soft:#1e2033;--code:#0f131a;--ok:#4ade80;--err:#ff8a80;--shadow:none}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+a{color:var(--accent)}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+header.top{border-bottom:1px solid var(--line);background:var(--card)}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{font-weight:700;font-size:1.1rem;letter-spacing:-.01em;color:var(--fg);text-decoration:none;display:flex;align-items:center;gap:.5rem}
+.logo{width:26px;height:26px;border-radius:7px;background:var(--accent);display:inline-grid;place-items:center;color:var(--accent-fg);font-size:.8rem;font-weight:800}
+nav a{color:var(--muted);text-decoration:none;margin-left:1.2rem;font-size:.95rem}nav a:hover{color:var(--fg)}
+.hero{padding:72px 0 48px;text-align:center}
+.eyebrow{display:inline-block;background:var(--soft);color:var(--accent);border-radius:999px;padding:.25rem .8rem;font-size:.85rem;font-weight:600;margin-bottom:1rem}
+.hero h1{font-size:clamp(2.4rem,7vw,3.8rem);line-height:1.05;letter-spacing:-.03em;margin:0 0 .8rem}
+.hero p.lead{font-size:clamp(1.05rem,2.6vw,1.25rem);color:var(--muted);max-width:640px;margin:0 auto 1.8rem}
+.ctas{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
+.btn,button{font:inherit;font-weight:600;font-size:.95rem;border-radius:10px;padding:.65rem 1.15rem;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;min-height:44px}
+.btn.primary,#signedout button,form#f button{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+button:hover,.btn:hover{filter:brightness(1.06)}button:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+section.block{padding:40px 0}
+h2{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .4rem}
+.sub{color:var(--muted);margin:0 0 1.5rem}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:s}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:var(--shadow);min-width:0}
+.step h3{margin:.6rem 0 .3rem;font-size:1.05rem}.step p{margin:0;color:var(--muted);font-size:.95rem}
+.num{width:32px;height:32px;border-radius:50%;background:var(--soft);color:var(--accent);display:grid;place-items:center;font-weight:700}
+#dh .signin{display:flex;flex-direction:column;align-items:flex-start;gap:.9rem}
+#dh .signin p{margin:0;color:var(--muted);max-width:620px}
+.userbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:16px}
+.userbar p{margin:0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid .wide{grid-column:1/-1}
+.card h3{margin:0 0 .3rem;font-size:1.05rem}
+.card .hint{color:var(--muted);font-size:.9rem;margin:0 0 .9rem}
+#ident{margin-top:.9rem;line-height:1.5}#ident img{border-radius:50%;vertical-align:middle;margin-right:.5rem}
+.tbl{overflow-x:auto}
+#dh table{border-collapse:collapse;width:100%;font-size:.9rem}
+#dh th{font-weight:600;color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+#dh td,#dh th{border-bottom:1px solid var(--line);padding:.55rem .5rem;text-align:left;vertical-align:middle;word-break:break-word}
+#dh td button{min-height:34px;padding:.3rem .8rem;font-size:.85rem;color:var(--err);border-color:var(--line)}
+.err{color:var(--err)}.err:empty{display:none}
+.hide{display:none}
+#maker .card{display:grid;gap:14px}
+label{display:block;font-size:.95rem}
+input[type=text],input[type=url]{display:block;width:100%;margin-top:.35rem;font:inherit;padding:.6rem .75rem;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--fg)}
+fieldset{border:1px solid var(--line);border-radius:12px;padding:.8rem 1rem;margin:0}
+legend{font-weight:600;padding:0 .4rem}
+fieldset label{margin:.35rem 0}
+input[type=checkbox],input[type=radio]{accent-color:var(--accent);width:1.05em;height:1.05em;vertical-align:-.15em}
+#perms small{color:var(--muted)}
+#org{display:inline-block!important;margin:0 0 0 .4rem!important;width:50%}
+pre,textarea{width:100%;background:var(--code);color:var(--fg);border:1px solid var(--line);border-radius:9px;padding:.7rem;white-space:pre-wrap;word-break:break-all;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0}
+pre:empty{display:none}
+.out h3{font-size:.95rem;margin:.4rem 0}
+.outs{display:grid;gap:10px}
+footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padding:24px 0 40px;margin-top:24px}
+@media (max-width:760px){.steps,.grid{grid-template-columns:1fr}.hero{padding:44px 0 28px}nav a.hide-sm{display:none}section.block{padding:28px 0}.card{padding:18px}#org{width:100%;margin:.4rem 0 0!important;display:block!important}}
+</style>
 <script src="manifest.js"></script></head><body>
+<header class="top"><div class="wrap"><a class="brand" href="#"><span class="logo" aria-hidden="true">dh</span>doublehub</a>
+<nav><a href="#how" class="hide-sm">How it works</a><a href="#dh">Dashboard</a><a href="#maker">App maker</a></nav></div></header>
+<main>
+<section class="hero"><div class="wrap">
+<span class="eyebrow">Your OK for every call</span>
 <h1>doublehub</h1>
-<section id="dh"><h2>Your doublehub</h2>
-<div id="signedout"><p>Step 1: sign in with GitHub. Step 2: approve doublehub for this site. This site never sees your GitHub token, and every call it makes for you needs your OK first.</p>
-<script src="embed.js" data-server="https://doublehub-production.up.railway.app" data-app="doublehub" data-label="Sign in with GitHub (doublehub)"></script>
-<p class="err" id="dherr"></p></div>
-<div id="signedin" class="hide">
-<p>Signed in as <b id="login"></b>. <button id="signout" type="button">Sign out</button></p>
-<h3>Your GitHub identity</h3><p>doublehub asks before it calls GitHub. <button id="idbtn" type="button">Load my GitHub profile (GET /user)</button></p><div id="ident"></div>
-<h3>Connected sites</h3><table id="sites"></table>
-<h3>Activity log</h3><p><small>Everything that left, or tried to leave, through doublehub.</small> <button id="auditbtn" type="button">Refresh</button></p><table id="audit"></table>
+<p class="lead">Two-layer GitHub sign-in, and your approval for everything that leaves.</p>
+<div class="ctas"><a class="btn primary" href="#dh">Sign in with GitHub</a><a class="btn" href="#maker">Make a GitHub App</a></div>
 </div></section>
-<h2>App maker</h2><p>Make a public GitHub App for your service. Works signed in or signed out.</p>
-<p>Fill this in, click the button, and GitHub creates the app on <b>your</b> account or org. Nothing is sent anywhere else — this page has no backend.</p>
+<section class="block" id="how"><div class="wrap">
+<h2>How it works</h2><p class="sub">Three steps. The site never sees your GitHub token.</p>
+<div class="steps">
+<div class="card step"><div class="num">1</div><h3>Sign in with GitHub</h3><p>GitHub confirms who you are. The token stays on the doublehub server.</p></div>
+<div class="card step"><div class="num">2</div><h3>Approve this site</h3><p>You allow doublehub for this exact site, and you can revoke it any time.</p></div>
+<div class="card step"><div class="num">3</div><h3>Approve every action</h3><p>Each GitHub call or bit of data shows you exactly what leaves, then waits for your OK. It's single-use and logged.</p></div>
+</div></div></section>
+<section class="block" id="dh"><div class="wrap">
+<h2>Your doublehub</h2><p class="sub">Your identity, your connected sites, and everything that left.</p>
+<div id="signedout"><div class="card signin">
+<p>Step 1: sign in with GitHub. Step 2: approve doublehub for this site. Every call this site makes for you needs your OK first.</p>
+<script src="embed.js" data-server="https://doublehub-production.up.railway.app" data-app="doublehub" data-label="Sign in with GitHub (doublehub)"></script>
+<p class="err" id="dherr"></p></div></div>
+<div id="signedin" class="hide">
+<div class="userbar"><p>Signed in as <b id="login"></b></p><button id="signout" type="button">Sign out</button></div>
+<div class="grid">
+<div class="card"><h3>Your GitHub identity</h3><p class="hint">doublehub asks you before it calls GitHub.</p><button id="idbtn" type="button">Load my GitHub profile (GET /user)</button><div id="ident"></div></div>
+<div class="card"><h3>Connected sites</h3><p class="hint">Sites you've allowed. Revoke any of them.</p><div class="tbl"><table id="sites"></table></div></div>
+<div class="card wide"><h3>Activity log</h3><p class="hint">Everything that left, or tried to leave, through doublehub. <button id="auditbtn" type="button">Refresh</button></p><div class="tbl"><table id="audit"></table></div></div>
+</div></div>
+</div></section>
+<section class="block" id="maker"><div class="wrap">
+<h2>App maker</h2><p class="sub">Make a public GitHub App for your service. Works signed in or signed out.</p>
+<div class="card">
+<p style="margin:0;color:var(--muted)">Fill this in and click the button. GitHub creates the app on <b>your</b> account or org. This form sends nothing anywhere else.</p>
 <label>Service name (becomes app name, max 34 chars) <input type="text" id="name" maxlength="34" placeholder="Acme Lights"></label>
 <label>Service URL <input type="url" id="url" placeholder="https://acme.dev"></label>
 <label>Short description <input type="text" id="description"></label>
@@ -27,10 +110,12 @@
 <fieldset id="events"><legend>Events to receive (needs a webhook URL)</legend></fieldset>
 <p class="err" id="err"></p>
 <form id="f" method="post" target="_blank"><input type="hidden" name="manifest" id="manifest"><button type="submit">Create my GitHub App on GitHub</button></form>
+<div class="outs out">
 <h3>Install link (works after you create the app)</h3><pre id="install"></pre>
-<p><small>GitHub may change the slug if the name is taken; check your app's page.</small></p>
+<p style="margin:0"><small>GitHub may change the slug if the name is taken; check your app's page.</small></p>
 <h3>“Install on GitHub” badge (Markdown)</h3><textarea id="badge" rows="3" readonly></textarea>
 <h3>Manifest JSON</h3><pre id="out"></pre>
+</div></div></div></section>
 <script>
 const M=GHAppManifest,$=id=>document.getElementById(id);
 for(const[k,[lvl,txt]]of Object.entries(M.PERMS))$('perms').insertAdjacentHTML('beforeend',`<label><input type="checkbox" data-p="${k}" data-l="${lvl}" ${k==='metadata'?'checked disabled':''}> ${txt} <small>(${k}: ${lvl})</small></label>`);
@@ -42,10 +127,12 @@ const org=document.querySelector('[name=owner]:checked').value==='org'?$('org').
 try{const m=M.build(o);$('err').textContent='';$('out').textContent=JSON.stringify(m,null,2);$('manifest').value=JSON.stringify(m);$('f').action=M.createUrl(org);$('install').textContent=M.installUrl(o.name);$('badge').value=M.badge(o.name);$('f').querySelector('button').disabled=false}
 catch(e){$('err').textContent=e.message;$('f').querySelector('button').disabled=true}}
 document.addEventListener('input',upd);upd();
-</script><section><h2>Embed two-layer sign-in on your page</h2>
-<p>Visitors authorize GitHub, then approve doublehub for your site. See DESIGN.md.</p>
-<pre>&lt;script src="https://fitzyracing1.github.io/doublehub/embed.js"
-  data-server="https://YOUR-DOUBLEHUB-SERVER" data-app="acme"&gt;&lt;/script&gt;</pre></section>
+</script>
+<section class="block" id="embed"><div class="wrap"><h2>Embed two-layer sign-in on your page</h2><p class="sub">Visitors sign in with GitHub, then approve doublehub for your site. See DESIGN.md.</p><div class="card"><pre>&lt;script src="https://fitzyracing1.github.io/doublehub/embed.js"
+  data-server="https://YOUR-DOUBLEHUB-SERVER" data-app="acme"&gt;&lt;/script&gt;</pre></div></div></section>
+</main>
+<footer><div class="wrap">doublehub. No trackers, no analytics. <a href="https://github.com/fitzyracing1/doublehub">Source</a> · Embed it: see DESIGN.md.</div></footer>
+
 <script>
 (function(){
 var S='https://doublehub-production.up.railway.app',$=function(i){return document.getElementById(i)},ss=window.sessionStorage;
