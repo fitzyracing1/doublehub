@@ -4,6 +4,8 @@ const http = require('http');
 const L = require('./lib');
 const { firstPartyHandler } = require('./firstparty');
 
+const PAGE = `<meta name=viewport content="width=device-width,initial-scale=1"><style>:root{--bg:#f7f8fa;--card:#fff;--fg:#14171c;--muted:#59606b;--line:#e3e6eb;--accent:#4f46e5;--accent-fg:#fff;--code:#f1f3f6;color-scheme:light dark}@media (prefers-color-scheme:dark){:root{--bg:#0d1016;--card:#161a22;--fg:#e8eaee;--muted:#a3aab6;--line:#2a303b;--accent:#8b85ff;--accent-fg:#0d1016;--code:#0f131a}}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;padding:24px 16px}main{max-width:560px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}main.wide{max-width:960px}.brand{font-weight:700;color:var(--muted);font-size:.9rem;margin:0 0 .5rem}h2{margin:0 0 .8rem;letter-spacing:-.01em}a{color:var(--accent)}code,pre{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border-radius:6px;padding:.1rem .3rem;word-break:break-all}pre{display:block;border:1px solid var(--line);padding:.7rem;max-height:240px;overflow:auto;white-space:pre-wrap}small{color:var(--muted)}form{display:flex;gap:.6rem;flex-wrap:wrap;margin:1rem 0}button{font:inherit;font-weight:600;border-radius:10px;padding:.65rem 1.2rem;min-height:44px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}button[value=allow]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}:focus-visible{outline:3px solid var(--accent);outline-offset:2px}.tbl{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.9rem}td,th{border-bottom:1px solid var(--line);padding:.5rem;text-align:left}th{color:var(--muted);font-size:.8rem;text-transform:uppercase}</style>`;
+
 function createServer(cfg = L.loadConfig(), store = L.createStore(), fetchImpl = globalThis.fetch) {
   const send = (res, code, body, type = 'application/json', extra = {}) => {
     res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store', 'x-frame-options': 'DENY',
@@ -59,7 +61,7 @@ function createServer(cfg = L.loadConfig(), store = L.createStore(), fetchImpl =
         const p = store.getPending(q.get('id') || ''); if (!p) return send(res, 400, 'Expired. Close this window and try again.', 'text/plain');
         const app = cfg.apps[p.app];
         return send(res, 200, `<!doctype html><meta charset=utf-8><title>doublehub consent</title>
-<body style="font:16px system-ui;max-width:480px;margin:40px auto">
+${PAGE}<body><main><p class=brand>doublehub</p>
 <h2>Allow this site?</h2>
 <p>Signed in to GitHub as <b>${L.esc(p.login)}</b>.</p>
 <p><b>${L.esc(p.origin)}</b> wants to use <b>${L.esc(app.name || app.id)}</b> with access: <code>${L.esc(app.scopes || 'basic profile')}</code>.</p>
@@ -77,7 +79,7 @@ function createServer(cfg = L.loadConfig(), store = L.createStore(), fetchImpl =
           msg = { type: 'doublehub:grant', grant: L.signGrant({ typ: 'grant', app: p.app, origin: p.origin, sub: p.sub, login: p.login }, cfg.secret) };
         } else msg = { type: 'doublehub:denied' };
         // targetOrigin is the exact bound origin: another site can never receive it.
-        return send(res, 200, `<!doctype html><meta charset=utf-8><p>Done. You can close this window.</p><script>
+        return send(res, 200, `<!doctype html><meta charset=utf-8>${PAGE}<body><main><p class=brand>doublehub</p><p>Done. You can close this window.</p></main><script>
 if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g, '\\u003c')}, ${JSON.stringify(p.origin).replace(/</g, '\\u003c')}); window.close();</script>`, 'text/html', { 'set-cookie': userCookie(p.sub) });
       }
       // Company backend redeems a grant for a doublehub SESSION (never the GitHub token; the server keeps it).
@@ -131,12 +133,12 @@ if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g,
         const app = cfg.apps[act.app], r = act.r, body = JSON.stringify(act.kind === 'send' ? r.payload : r.body, null, 2) || '(none)';
         const what = act.kind === 'send' ? `send this data to <b>${L.esc(r.dest)}</b>` : `call GitHub as you: <code>${L.esc(r.method)} https://api.github.com${L.esc(r.path)}</code>`;
         return send(res, 200, `<!doctype html><meta charset=utf-8><title>doublehub: approve action</title>
-<body style="font:16px system-ui;max-width:560px;margin:30px auto">
+${PAGE}<body><main><p class=brand>doublehub</p>
 <h2>Approve this one action?</h2>
 <p>Site: <b>${L.esc(act.origin)}</b><br>App: <b>${L.esc(app.name || app.id)}</b></p>
 <p>It wants to ${what}.</p>
 ${act.summary ? `<p>Site's description (unverified): <i>${L.esc(act.summary)}</i></p>` : ''}
-<p>Exact data that will leave:</p><pre style="background:#f4f4f4;padding:8px;max-height:240px;overflow:auto;white-space:pre-wrap">${L.esc(body.slice(0, 4000))}${body.length > 4000 ? '\n... (' + body.length + ' bytes total)' : ''}</pre>
+<p>Exact data that will leave:</p><pre>${L.esc(body.slice(0, 4000))}${body.length > 4000 ? '\n... (' + body.length + ' bytes total)' : ''}</pre>
 <p><small>Approval is single-use, for exactly this request, and expires in 1 minute. Request hash <code>${L.esc(act.h.slice(0, 16))}</code>.</small></p>
 <form method=post action="/approve"><input type=hidden name=id value="${L.esc(q.get('id'))}"><input type=hidden name=csrf value="${L.esc(act.csrf)}">
 <button name=decision value=allow>Allow once</button> <button name=decision value=deny>Deny</button></form>
@@ -158,7 +160,7 @@ ${act.summary ? `<p>Site's description (unverified): <i>${L.esc(act.summary)}</i
           }
           store.audit(act.sub, { ...base, decision: 'approved' });
         } else { store.takeAction(b.id); store.audit(act.sub, { ...base, decision: 'denied' }); msg = { type: 'doublehub:denied', id: b.id }; }
-        return send(res, 200, `<!doctype html><meta charset=utf-8><p>${msg.type === 'doublehub:denied' ? 'Denied. Nothing was sent.' : 'Approved once.'} You can close this window.</p><script>
+        return send(res, 200, `<!doctype html><meta charset=utf-8>${PAGE}<body><main><p class=brand>doublehub</p><p>${msg.type === 'doublehub:denied' ? 'Denied. Nothing was sent.' : 'Approved once.'} You can close this window.</p></main><script>
 if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g, '\\u003c')}, ${JSON.stringify(act.origin).replace(/</g, '\\u003c')}); window.close();</script>`, 'text/html');
       }
       // Company server verifies a doublehub.send receipt (single-use). Reject any data without a valid one.
@@ -175,9 +177,9 @@ if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g,
         const sub = user(req); if (!sub) return send(res, 403, 'Sign in with doublehub first.', 'text/plain');
         const rows = store.auditFor(sub).reverse();
         if ((req.headers.accept || '').includes('application/json')) return send(res, 200, { entries: rows });
-        return send(res, 200, `<!doctype html><meta charset=utf-8><title>doublehub activity</title><body style="font:14px system-ui;max-width:900px;margin:30px auto">
-<h2>Everything that left (or tried to leave) through doublehub</h2><table border=1 cellpadding=4 style="border-collapse:collapse"><tr><th>When</th><th>Decision</th><th>Site</th><th>App</th><th>What</th></tr>
-${rows.map(e => `<tr><td>${L.esc(e.at)}</td><td>${L.esc(e.decision)}</td><td>${L.esc(e.origin)}</td><td>${L.esc(e.app)}</td><td>${L.esc(e.kind === 'send' ? 'send to ' + e.dest : e.method + ' ' + e.path)}</td></tr>`).join('')}</table>`, 'text/html');
+        return send(res, 200, `<!doctype html><meta charset=utf-8><title>doublehub activity</title>${PAGE}<body><main class=wide><p class=brand>doublehub</p>
+<h2>Everything that left (or tried to leave) through doublehub</h2><div class=tbl><table><tr><th>When</th><th>Decision</th><th>Site</th><th>App</th><th>What</th></tr>
+${rows.map(e => `<tr><td>${L.esc(e.at)}</td><td>${L.esc(e.decision)}</td><td>${L.esc(e.origin)}</td><td>${L.esc(e.app)}</td><td>${L.esc(e.kind === 'send' ? 'send to ' + e.dest : e.method + ' ' + e.path)}</td></tr>`).join('')}</table></div></main>`, 'text/html');
       }
       // Revoke: user (holding the grant) or company withdraws consent for that origin
       if (u.pathname === '/revoke' && req.method === 'POST') {
