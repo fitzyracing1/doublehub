@@ -18,3 +18,15 @@ Prints manifest JSON to stdout; create URL, install link and badge to stderr. `n
 
 ## Test
 `node test.js`
+
+## Two-layer auth widget (embed)
+Put this on your page. Visitors authorize GitHub (layer 1), then approve doublehub for your site (layer 2):
+
+```html
+<script src="https://fitzyracing1.github.io/doublehub/embed.js"
+        data-server="https://YOUR-DOUBLEHUB-SERVER" data-app="acme"></script>
+<script>
+addEventListener('doublehub:grant', e => fetch('/api/doublehub', {method:'POST', body: e.detail.grant}));
+</script>
+```
+Your backend redeems the grant at `POST /token` with its app key. Run the server with `node server/server.js` (config via env, see DESIGN.md). Tests: `node test.js && node server/test.js`.
