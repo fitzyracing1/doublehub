@@ -94,8 +94,15 @@ if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g,
       if (u.pathname === '/action' && req.method === 'POST') {
         const b = parse(await readBody(req), 'json'), app = appAuth(req, b.app); if (!app) return send(res, 401, { error: 'unauthorized' });
         const c = session(b, app), r = ghReq(c, b);
-        const id = L.rand(), h = L.reqHash(r);
-        store.putAction(id, { kind: 'github', h, r, summary: String(b.summary || '').slice(0, 500), csrf: L.rand(), app: c.app, origin: c.origin, sub: c.sub });
+        const id = L.rand(), h = L.reqHash(r), tpl = L.lowRiskPattern(r.method, r.path, r.body);
+        // Pre-approval: only for low-risk patterns the human explicitly granted in an approval popup. Risky calls never match (tpl null).
+        const pg = tpl && store.getPre(c.app, c.origin, c.sub, r.method, tpl);
+        if (pg) {
+          store.putAction(id, { kind: 'github', h, r, approved: true, csrf: L.rand(), preapproved: pg.id, app: c.app, origin: c.origin, sub: c.sub });
+          store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: 'pre-approved', method: r.method, path: r.path, pattern: tpl, hash: h });
+          return send(res, 200, { action_id: id, preapproved: true, approval: L.signGrant({ typ: 'approval', aid: id, app: c.app, origin: c.origin, sub: c.sub, h, pre: pg.id }, cfg.secret, 60), request_hash: h, expires_in: 60 });
+        }
+        store.putAction(id, { kind: 'github', h, r, tpl, summary: String(b.summary || '').slice(0, 500), csrf: L.rand(), app: c.app, origin: c.origin, sub: c.sub });
         return send(res, 202, { action_id: id, approve_url: cfg.base + '/approve?id=' + encodeURIComponent(id), request_hash: h, expires_in: 120 });
       }
       if (u.pathname === '/action/execute' && req.method === 'POST') {
@@ -108,9 +115,15 @@ if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g,
         if (!store.useOnce(a.jti)) return send(res, 403, { error: 'approval already used' });
         store.takeAction(b.action_id);
         const con = store.getConsent(c.app, c.origin, c.sub); if (!con) return send(res, 403, { error: 'revoked' });
+        if (a.pre && act.preapproved !== a.pre) return send(res, 403, { error: 'no matching approved action' });
+        if (a.pre) { const tpl = L.lowRiskPattern(r.method, r.path, r.body); // server-side re-check: grant still live and call still low-risk
+          if (!tpl || !store.getPre(c.app, c.origin, c.sub, r.method, tpl) || store.getPre(c.app, c.origin, c.sub, r.method, tpl).id !== a.pre) {
+            store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: 'blocked: pre-approval no longer valid', method: r.method, path: r.path }); return send(res, 403, { error: 'pre-approval revoked or expired' }); } }
         const gr = await fetchImpl('https://api.github.com' + r.path, { method: r.method, headers: { authorization: 'Bearer ' + con.token, accept: 'application/vnd.github+json', 'user-agent': 'doublehub', ...(r.body != null ? { 'content-type': 'application/json' } : {}) }, ...(r.body != null ? { body: JSON.stringify(r.body) } : {}) });
-        store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: 'executed', method: r.method, path: r.path, hash: h, status: gr.status });
         const txt = await gr.text(); let data; try { data = JSON.parse(txt); } catch { data = txt; }
+        if (a.pre && L.looksPrivate(data)) { store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: 'blocked: private content needs your approval', method: r.method, path: r.path, hash: h, preapproved: true });
+          return send(res, 403, { error: 'private content: ask the user with a normal approval' }); }
+        store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: a.pre ? 'executed (pre-approved)' : 'executed', method: r.method, path: r.path, hash: h, status: gr.status, ...(a.pre ? { preapproved: true } : {}) });
         return send(res, 200, { status: gr.status, data });
       }
       // Layer 3b: site -> company server data. Opened as a popup by doublehub.send(dest, payload).
@@ -141,6 +154,8 @@ ${act.summary ? `<p>Site's description (unverified): <i>${L.esc(act.summary)}</i
 <p>Exact data that will leave:</p><pre>${L.esc(body.slice(0, 4000))}${body.length > 4000 ? '\n... (' + body.length + ' bytes total)' : ''}</pre>
 <p><small>Approval is single-use, for exactly this request, and expires in 1 minute. Request hash <code>${L.esc(act.h.slice(0, 16))}</code>.</small></p>
 <form method=post action="/approve"><input type=hidden name=id value="${L.esc(q.get('id'))}"><input type=hidden name=csrf value="${L.esc(act.csrf)}">
+${act.kind === 'github' && act.tpl ? `<p style="flex-basis:100%"><label><input type=checkbox name=preapprove value=1> Allow reads like this (<code>${L.esc(act.r.method + ' ' + act.tpl)}</code>) on this site for
+<select name=ttl><option value=3600 selected>1 hour</option><option value=14400>4 hours</option><option value=86400>24 hours</option></select></label><br><small>Low-risk public read. Off unless you tick it. Revoke any time in Your doublehub. Writes, sends and private data always ask.</small></p>` : ''}
 <button name=decision value=allow>Allow once</button> <button name=decision value=deny>Deny</button></form>
 <p><a href="/audit">My activity log</a></p>`, 'text/html');
       }
@@ -156,6 +171,13 @@ ${act.summary ? `<p>Site's description (unverified): <i>${L.esc(act.summary)}</i
           } else {
             if (act.approved) return send(res, 400, 'Already decided.', 'text/plain');
             act.approved = true;
+            // Opt-in pre-approval, only from this human, CSRF-checked popup, and only if the server classifies the call low-risk.
+            const tpl = L.lowRiskPattern(act.r.method, act.r.path, act.r.body);
+            if (b.preapprove === '1' && tpl && tpl === act.tpl) {
+              const ttl = Math.min(Math.max(parseInt(b.ttl, 10) || L.PREAPPROVE_DEFAULT_SEC, 60), L.PREAPPROVE_MAX_SEC);
+              store.grantPre(act.app, act.origin, act.sub, act.r.method, tpl, ttl);
+              store.audit(act.sub, { app: act.app, origin: act.origin, kind: 'preapproval', decision: 'granted for ' + Math.round(ttl / 60) + ' min', method: act.r.method, path: tpl });
+            }
             msg = { type: 'doublehub:approval', id: b.id, approval: L.signGrant({ typ: 'approval', aid: b.id, app: act.app, origin: act.origin, sub: act.sub, h: act.h }, cfg.secret, 60) };
           }
           store.audit(act.sub, { ...base, decision: 'approved' });
@@ -179,7 +201,7 @@ if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g,
         if ((req.headers.accept || '').includes('application/json')) return send(res, 200, { entries: rows });
         return send(res, 200, `<!doctype html><meta charset=utf-8><title>doublehub activity</title>${PAGE}<body><main class=wide><p class=brand>doublehub</p>
 <h2>Everything that left (or tried to leave) through doublehub</h2><div class=tbl><table><tr><th>When</th><th>Decision</th><th>Site</th><th>App</th><th>What</th></tr>
-${rows.map(e => `<tr><td>${L.esc(e.at)}</td><td>${L.esc(e.decision)}</td><td>${L.esc(e.origin)}</td><td>${L.esc(e.app)}</td><td>${L.esc(e.kind === 'send' ? 'send to ' + e.dest : e.method + ' ' + e.path)}</td></tr>`).join('')}</table></div></main>`, 'text/html');
+${rows.map(e => `<tr><td>${L.esc(e.at)}</td><td>${L.esc(e.decision)}</td><td>${L.esc(e.origin)}</td><td>${L.esc(e.app)}</td><td>${L.esc(e.kind === 'send' ? 'send to ' + e.dest : e.kind === 'preapproval' ? 'pre-approve ' + e.method + ' ' + e.path : e.method + ' ' + e.path)}</td></tr>`).join('')}</table></div></main>`, 'text/html');
       }
       // Revoke: user (holding the grant) or company withdraws consent for that origin
       if (u.pathname === '/revoke' && req.method === 'POST') {
