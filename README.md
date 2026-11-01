@@ -1,10 +1,18 @@
 # doublehub
 
-A static page (`index.html`, works on GitHub Pages, no backend) that lets any company turn its service into a public GitHub App using GitHub's [manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest).
+**Turn your service into a GitHub App install link in 2 minutes.**
 
-1. Enter service name, URL, optional webhook URL, pick permissions/events (least privilege: only `metadata: read` by default), choose personal or org owner.
-2. Click **Create my GitHub App** — the manifest is POSTed to `https://github.com/settings/apps/new` or `https://github.com/organizations/<org>/settings/apps/new`. You create the app on your own account.
-3. Share the install link `https://github.com/apps/<slug>/installations/new` and the copyable "Install on GitHub" Markdown badge.
+For companies and orgs that want GitHub users to connect to their service. Fill in one form, and you get your own GitHub App, an install link and an "Install on GitHub" badge. No backend needed.
+
+**[Make your GitHub App →](https://fitzyracing1.github.io/doublehub/#maker)**
+
+## How it works
+
+1. **Describe your service.** Enter its name, URL, optional webhook URL, and only the permissions/events you need (just `metadata: read` by default). Pick a personal or org owner.
+2. **GitHub creates the app.** Click **Create my GitHub App**. The [manifest](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest) is POSTed to GitHub, which creates the app on your own account or org.
+3. **Share the install link.** Use `https://github.com/apps/<slug>/installations/new` or the copyable "Install on GitHub" Markdown badge.
+
+**Security:** visitors sign in with GitHub, then approve doublehub separately on each site (revocable any time), and every call that leaves needs their explicit OK.
 
 After creation GitHub redirects with a `code`; exchange it within 1 hour via `POST /app-manifests/{code}/conversions` to get the app's ID, private key and webhook secret (needs your own `redirect_url` handler, or set them later in app settings).
 
