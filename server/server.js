@@ -96,7 +96,7 @@ if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g,
         const c = session(b, app), r = ghReq(c, b);
         const id = L.rand(), h = L.reqHash(r), tpl = L.lowRiskPattern(r.method, r.path, r.body);
         // Pre-approval: only for low-risk patterns the human explicitly granted in an approval popup. Risky calls never match (tpl null).
-        const pg = tpl && store.getPre(c.app, c.origin, c.sub, r.method, tpl);
+        const pg = tpl && store.getPre(c.app, c.origin, c.sub, r.method, tpl, L.preTarget(r.path));
         if (pg) {
           store.putAction(id, { kind: 'github', h, r, approved: true, csrf: L.rand(), preapproved: pg.id, app: c.app, origin: c.origin, sub: c.sub });
           store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: 'pre-approved', method: r.method, path: r.path, pattern: tpl, hash: h });
@@ -117,7 +117,7 @@ if (window.opener) window.opener.postMessage(${JSON.stringify(msg).replace(/</g,
         const con = store.getConsent(c.app, c.origin, c.sub); if (!con) return send(res, 403, { error: 'revoked' });
         if (a.pre && act.preapproved !== a.pre) return send(res, 403, { error: 'no matching approved action' });
         if (a.pre) { const tpl = L.lowRiskPattern(r.method, r.path, r.body); // server-side re-check: grant still live and call still low-risk
-          if (!tpl || !store.getPre(c.app, c.origin, c.sub, r.method, tpl) || store.getPre(c.app, c.origin, c.sub, r.method, tpl).id !== a.pre) {
+          const pv = tpl && store.getPre(c.app, c.origin, c.sub, r.method, tpl, L.preTarget(r.path)); if (!pv || pv.id !== a.pre) {
             store.audit(c.sub, { app: c.app, origin: c.origin, kind: 'github', decision: 'blocked: pre-approval no longer valid', method: r.method, path: r.path }); return send(res, 403, { error: 'pre-approval revoked or expired' }); } }
         const gr = await fetchImpl('https://api.github.com' + r.path, { method: r.method, headers: { authorization: 'Bearer ' + con.token, accept: 'application/vnd.github+json', 'user-agent': 'doublehub', ...(r.body != null ? { 'content-type': 'application/json' } : {}) }, ...(r.body != null ? { body: JSON.stringify(r.body) } : {}) });
         const txt = await gr.text(); let data; try { data = JSON.parse(txt); } catch { data = txt; }
@@ -154,7 +154,7 @@ ${act.summary ? `<p>Site's description (unverified): <i>${L.esc(act.summary)}</i
 <p>Exact data that will leave:</p><pre>${L.esc(body.slice(0, 4000))}${body.length > 4000 ? '\n... (' + body.length + ' bytes total)' : ''}</pre>
 <p><small>Approval is single-use, for exactly this request, and expires in 1 minute. Request hash <code>${L.esc(act.h.slice(0, 16))}</code>.</small></p>
 <form method=post action="/approve"><input type=hidden name=id value="${L.esc(q.get('id'))}"><input type=hidden name=csrf value="${L.esc(act.csrf)}">
-${act.kind === 'github' && act.tpl ? `<p style="flex-basis:100%"><label><input type=checkbox name=preapprove value=1> Allow reads like this (<code>${L.esc(act.r.method + ' ' + act.tpl)}</code>) on this site for
+${act.kind === 'github' && act.tpl ? `<p style="flex-basis:100%"><label><input type=checkbox name=preapprove value=1> Allow reads like this (<code>${L.esc(act.r.method + ' ' + act.tpl)}</code>) on <b>${L.esc(L.preTarget(act.r.path) || 'your rate limit')}</b> on this site for
 <select name=ttl><option value=3600 selected>1 hour</option><option value=14400>4 hours</option><option value=86400>24 hours</option></select></label><br><small>Low-risk public read. Off unless you tick it. Revoke any time in Your doublehub. Writes, sends and private data always ask.</small></p>` : ''}
 <button name=decision value=allow>Allow once</button> <button name=decision value=deny>Deny</button></form>
 <p><a href="/audit">My activity log</a></p>`, 'text/html');
@@ -175,8 +175,8 @@ ${act.kind === 'github' && act.tpl ? `<p style="flex-basis:100%"><label><input t
             const tpl = L.lowRiskPattern(act.r.method, act.r.path, act.r.body);
             if (b.preapprove === '1' && tpl && tpl === act.tpl) {
               const ttl = Math.min(Math.max(parseInt(b.ttl, 10) || L.PREAPPROVE_DEFAULT_SEC, 60), L.PREAPPROVE_MAX_SEC);
-              store.grantPre(act.app, act.origin, act.sub, act.r.method, tpl, ttl);
-              store.audit(act.sub, { app: act.app, origin: act.origin, kind: 'preapproval', decision: 'granted for ' + Math.round(ttl / 60) + ' min', method: act.r.method, path: tpl });
+              const target = L.preTarget(act.r.path); store.grantPre(act.app, act.origin, act.sub, act.r.method, tpl, target, ttl);
+              store.audit(act.sub, { app: act.app, origin: act.origin, kind: 'preapproval', decision: 'granted for ' + Math.round(ttl / 60) + ' min on ' + (target || 'rate limit'), method: act.r.method, path: tpl });
             }
             msg = { type: 'doublehub:approval', id: b.id, approval: L.signGrant({ typ: 'approval', aid: b.id, app: act.app, origin: act.origin, sub: act.sub, h: act.h }, cfg.secret, 60) };
           }

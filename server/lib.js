@@ -63,14 +63,15 @@ function createStore() {
     consentsFor(sub) { const out = []; for (const [k, v] of consents) { const [app, origin, s] = k.split('|'); if (s === sub) out.push({ app, origin, login: v.login }); } return out; },
     auditFor(sub) { return (audits.get(sub) || []).slice(); },
     // Pre-approvals: per app+origin+user, per pattern (method + path template), time-limited. Dropped when the site is revoked.
-    preKey: (app, origin, sub, method, tpl) => [app, origin, sub, method, tpl].join('|'),
-    grantPre(app, origin, sub, method, tpl, ttlSec, now = Date.now()) { const id = rand(12);
-      pre.set(this.preKey(app, origin, sub, method, tpl), { id, app, origin, sub, method, tpl, exp: now + ttlSec * 1000, created: new Date(now).toISOString() }); return id; },
-    getPre(app, origin, sub, method, tpl, now = Date.now()) { const k = this.preKey(app, origin, sub, method, tpl), v = pre.get(k);
-      if (!v) return null; if (v.exp <= now || !consents.has(this.consentKey(app, origin, sub))) { pre.delete(k); return null; } return v; },
+    preKey: (app, origin, sub, method, tpl, target) => [app, origin, sub, method, tpl, target].join('|'),
+    // target = the one owner/repo (or user/org) the human approved; a grant never covers another repo or owner.
+    grantPre(app, origin, sub, method, tpl, target, ttlSec, now = Date.now()) { const id = rand(12); if (typeof target !== 'string') throw new Error('target required');
+      pre.set(this.preKey(app, origin, sub, method, tpl, target), { id, app, origin, sub, method, tpl, target, exp: now + ttlSec * 1000, created: new Date(now).toISOString() }); return id; },
+    getPre(app, origin, sub, method, tpl, target, now = Date.now()) { if (typeof target !== 'string') return null; const k = this.preKey(app, origin, sub, method, tpl, target), v = pre.get(k);
+      if (!v) return null; if (v.exp <= now || !consents.has(this.consentKey(app, origin, sub)) || v.target !== target || v.tpl !== tpl) { if (v.exp <= now) pre.delete(k); return null; } return v; },
     presFor(sub, now = Date.now()) { const out = []; for (const [k, v] of pre) { if (v.sub !== sub) continue;
       if (v.exp <= now || !consents.has(this.consentKey(v.app, v.origin, v.sub))) { pre.delete(k); continue; }
-      out.push({ id: v.id, app: v.app, origin: v.origin, method: v.method, path: v.tpl, expires_at: new Date(v.exp).toISOString() }); } return out; },
+      out.push({ id: v.id, app: v.app, origin: v.origin, method: v.method, path: v.tpl, target: v.target, expires_at: new Date(v.exp).toISOString() }); } return out; },
     revokePre(sub, id) { for (const [k, v] of pre) if (v.sub === sub && v.id === id) { pre.delete(k); return v; } return null; },
     isRevoked(c) { return revokedJti.has(c.jti) || !consents.has(this.consentKey(c.app, c.origin, c.sub)); },
   };
@@ -125,6 +126,11 @@ function lowRiskPattern(method, path, body) {
     if (segs.length === parts.length && segs.every((s, i) => s === SEG ? new RegExp('^' + SEG + '$').test(parts[i]) && !/^\.+$/.test(parts[i]) : s === parts[i])) return tpl;
   return null;
 }
+// The specific thing a low-risk read is about: 'owner/repo' for /repos/..., 'user' or 'org' for /users|/orgs, '' for /rate_limit.
+// Lower-cased (GitHub names are case-insensitive). null if the path is not low-risk.
+function preTarget(path) { const tpl = lowRiskPattern('GET', path, null); if (!tpl) return null;
+  const p = path.slice(1).split('/'); if (p[0] === 'repos') return (p[1] + '/' + p[2]).toLowerCase();
+  if (p[0] === 'users' || p[0] === 'orgs') return p[1].toLowerCase(); return ''; }
 // True if a GitHub response reveals private content; pre-approved calls never return it.
 function looksPrivate(d) { const one = x => x && typeof x === 'object' && (x.private === true || x.visibility === 'private' || x.visibility === 'internal');
   return Array.isArray(d) ? d.some(one) : one(d); }
@@ -133,4 +139,4 @@ function cookie(req, name) { const m = (req.headers.cookie || '').match(new RegE
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-module.exports = { rand, pkce, challengeFor, normOrigin, originAllowed, signGrant, verifyGrant, createStore, loadConfig, safeEq, esc, canon, reqHash, safeApiPath, METHODS, cookie, lowRiskPattern, looksPrivate, PREAPPROVE_DEFAULT_SEC, PREAPPROVE_MAX_SEC };
+module.exports = { rand, pkce, challengeFor, normOrigin, originAllowed, signGrant, verifyGrant, createStore, loadConfig, safeEq, esc, canon, reqHash, safeApiPath, METHODS, cookie, lowRiskPattern, preTarget, looksPrivate, PREAPPROVE_DEFAULT_SEC, PREAPPROVE_MAX_SEC };

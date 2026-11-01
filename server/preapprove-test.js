@@ -39,7 +39,7 @@ const SECRET = 'x'.repeat(40), KEY = 'k'.repeat(32);
 
   // off by default: low-risk read still prompts; popup offers the checkbox
   const q1 = await J('/action', READ); assert.strictEqual(q1.status, 202); const id1 = (await q1.json()).action_id;
-  const d1 = await decide(id1); assert(d1.ap.includes('name=preapprove') && d1.ap.includes('1 hour'), 'checkbox shown for low-risk');
+  const d1 = await decide(id1); assert(d1.ap.includes('name=preapprove') && d1.ap.includes('1 hour') && d1.ap.includes('<b>octo/x</b>'), 'checkbox shown for low-risk, names the repo');
   assert.strictEqual((await J('/action', READ)).status, 202, 'no grant without the checkbox');
   // risky popup has no checkbox
   const qw = await (await J('/action', WRITE)).json(); assert(!(await (await f('/approve?id=' + qw.action_id, { headers: { cookie } })).text()).includes('name=preapprove'));
@@ -49,10 +49,26 @@ const SECRET = 'x'.repeat(40), KEY = 'k'.repeat(32);
   const q2 = await (await J('/action', READ)).json(); await decide(q2.action_id, '&preapprove=1&ttl=999999');
   const pres = store.presFor('7'); assert.strictEqual(pres.length, 1); assert.strictEqual(pres[0].path, '/repos/:owner/:repo');
   assert(Date.parse(pres[0].expires_at) - Date.now() <= 86400e3 + 1000, 'max 24h');
-  // within window: same pattern auto-approves (other repo too), executes, audited as pre-approved
-  const p1 = await J('/action', READ2); assert.strictEqual(p1.status, 200); const pj = await p1.json(); assert(pj.preapproved && pj.approval);
-  const ex = await J('/action/execute', { ...READ2, action_id: pj.action_id, approval: pj.approval }); assert.strictEqual(ex.status, 200);
-  assert(audit().includes('pre-approved GET /repos/octo/other') && audit().includes('executed (pre-approved) GET /repos/octo/other'));
+  assert.strictEqual(pres[0].target, 'octo/x', 'grant names the one repo');
+  // grant covers only that repo: repo B and a different owner still prompt
+  assert.strictEqual((await J('/action', READ2)).status, 202, 'grant for octo/x does not cover octo/other');
+  assert.strictEqual((await J('/action', { ...S, method: 'GET', path: '/repos/evil/x' })).status, 202, 'does not cover a different owner');
+  assert.strictEqual(store.getPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo', 'octo/other'), null);
+  assert.strictEqual(store.getPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo'), null, 'no target => no grant');
+  // within window: same repo auto-approves (case-insensitive), executes, audited as pre-approved
+  const p1 = await J('/action', { ...S, method: 'GET', path: '/repos/Octo/X' }); assert.strictEqual(p1.status, 200); const pj = await p1.json(); assert(pj.preapproved && pj.approval);
+  const ex = await J('/action/execute', { ...S, method: 'GET', path: '/repos/Octo/X', action_id: pj.action_id, approval: pj.approval }); assert.strictEqual(ex.status, 200);
+  assert(audit().includes('pre-approved GET /repos/Octo/X') && audit().includes('executed (pre-approved) GET /repos/Octo/X'));
+  // an approval issued for repo A cannot execute repo B (request hash + server-side target re-check)
+  const pa = await (await J('/action', READ)).json(); assert(pa.preapproved);
+  assert.strictEqual((await J('/action/execute', { ...READ2, action_id: pa.action_id, approval: pa.approval })).status, 403, 'repo A approval cannot run repo B');
+  // user/org grants are per user/org too
+  store.grantPre('acme', 'https://acme.dev', '7', 'GET', '/users/:user', 'octo', 3600);
+  assert.strictEqual((await J('/action', { ...S, method: 'GET', path: '/users/octo' })).status, 200);
+  assert.strictEqual((await J('/action', { ...S, method: 'GET', path: '/users/someoneelse' })).status, 202, 'user grant does not cover another user');
+  assert.strictEqual((await J('/action', { ...S, method: 'GET', path: '/orgs/octo' })).status, 202, 'user grant does not cover org pattern');
+  store.revokePre('7', store.presFor('7').find(x => x.path === '/users/:user').id);
+  assert.strictEqual(L.preTarget('/repos/Octo/Hello/tags'), 'octo/hello'); assert.strictEqual(L.preTarget('/orgs/GH'), 'gh'); assert.strictEqual(L.preTarget('/user'), null);
   // pre-approval approval cannot be reused for a different request
   const p1b = await (await J('/action', READ)).json();
   assert.strictEqual((await J('/action/execute', { ...WRITE, action_id: p1b.action_id, approval: p1b.approval })).status, 403);
@@ -65,23 +81,23 @@ const SECRET = 'x'.repeat(40), KEY = 'k'.repeat(32);
   assert.strictEqual((await J('/action', { ...S, method: 'GET', path: '/user' })).status, 202);
   assert.strictEqual((await J('/action', { ...S, method: 'GET', path: '/repos/octo/x/languages' })).status, 202, 'other pattern still prompts');
   // grant is per site: a different site's session gets nothing (consent store is keyed per origin)
-  assert.strictEqual(store.getPre('acme', 'https://evil.dev', '7', 'GET', '/repos/:owner/:repo'), null);
+  assert.strictEqual(store.getPre('acme', 'https://evil.dev', '7', 'GET', '/repos/:owner/:repo', 'octo/x'), null);
   // expiry
-  const k = store.presFor('7')[0]; store.grantPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo', 1, Date.now() - 5000);
+  const k = store.presFor('7')[0]; store.grantPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo', 'octo/x', 1, Date.now() - 5000);
   assert.strictEqual((await J('/action', READ)).status, 202, 'expired grant prompts');
   // grant again, issue approval, then revoke before execute => blocked
-  store.grantPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo', 3600);
+  store.grantPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo', 'octo/x', 3600);
   const pr = await (await J('/action', READ)).json(); assert(pr.preapproved);
   assert(store.revokePre('7', store.presFor('7')[0].id));
   assert.strictEqual((await J('/action', READ)).status, 202, 'revoked grant prompts');
   assert.strictEqual((await J('/action/execute', { ...READ, action_id: pr.action_id, approval: pr.approval })).status, 403, 'revoked between issue and execute');
   // revoking the site removes its pre-approvals
-  store.grantPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo', 3600); assert.strictEqual(store.presFor('7').length, 1);
+  store.grantPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo', 'octo/x', 3600); assert.strictEqual(store.presFor('7').length, 1);
   await f('/revoke', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ grant }) });
   assert.strictEqual(store.presFor('7').length, 0, 'site revoke drops pre-approvals');
   store.grantConsent('acme', 'https://acme.dev', '7', { token: 't', login: 'octo' });
-  assert.strictEqual(store.getPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo'), null, 'does not come back on reconnect');
+  assert.strictEqual(store.getPre('acme', 'https://acme.dev', '7', 'GET', '/repos/:owner/:repo', 'octo/x'), null, 'does not come back on reconnect');
   // audit has the grant entry
-  assert(audit().some(x => x.startsWith('granted for 1440 min GET /repos/:owner/:repo')));
+  assert(audit().some(x => x.startsWith('granted for 1440 min on octo/x GET /repos/:owner/:repo')));
   srv.close(); console.log('pre-approval tests lit');
 })().catch(e => { console.error(e); process.exit(1); });
