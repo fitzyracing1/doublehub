@@ -1,18 +1,24 @@
 # doublehub
 
-**Turn your service into a GitHub App install link in 2 minutes.**
+**Two-layer GitHub authorization for every site and app.**
 
-For companies and orgs that want GitHub users to connect to their service. Fill in one form, and you get your own GitHub App, an install link and an "Install on GitHub" badge. No backend needed.
+First you sign in with GitHub. Then you separately approve doublehub on each site where it loads, and you can revoke that any time. On top of both layers, every GitHub call or bit of data that leaves waits for your OK.
 
-**[Make your GitHub App →](https://fitzyracing1.github.io/doublehub/#maker)**
+**[Try the sign-in →](https://fitzyracing1.github.io/doublehub/#dh)** · **[Make your GitHub App →](https://fitzyracing1.github.io/doublehub/#maker)**
 
 ## How it works
+
+1. **Layer 1: sign in with GitHub.** GitHub confirms who you are. The token stays on the doublehub server; sites never see it.
+2. **Layer 2: approve this site.** You allow doublehub separately for each exact site where the widget loads, and you can revoke it any time.
+3. **Approve every action.** Each GitHub call or bit of data shows you exactly what leaves, then waits for your OK. It's single-use and logged.
+
+## For companies: offer it with a GitHub App
+
+The App maker turns your service into a GitHub App install link, created on your own GitHub account or org.
 
 1. **Describe your service.** Enter its name, URL, optional webhook URL, and only the permissions/events you need (just `metadata: read` by default). Pick a personal or org owner.
 2. **GitHub creates the app.** Click **Create my GitHub App**. The [manifest](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest) is POSTed to GitHub, which creates the app on your own account or org.
 3. **Share the install link.** Use `https://github.com/apps/<slug>/installations/new` or the copyable "Install on GitHub" Markdown badge.
-
-**Security:** visitors sign in with GitHub, then approve doublehub separately on each site (revocable any time), and every call that leaves needs their explicit OK.
 
 After creation GitHub redirects with a `code`; exchange it within 1 hour via `POST /app-manifests/{code}/conversions` to get the app's ID, private key and webhook secret (needs your own `redirect_url` handler, or set them later in app settings).
 
@@ -49,7 +55,9 @@ const approval = await doublehub.approve(action_id);   // popup shows site, app,
 // Data to your own server (dest must be in the app's send_to list):
 await doublehub.send('https://api.acme.dev/ingest', { email });  // popup, then POST {payload, receipt, dest}
 ```
-Your server **must reject data without a receipt** that `POST /receipt/verify` accepts. Users see every approved/denied action at `GET /audit`. No "always allow" by default. Details in DESIGN.md. Run the server with `node server/server.js` (config via env, see DESIGN.md). Tests: `npm test`.
+Your server **must reject data without a receipt** that `POST /receipt/verify` accepts. Users see every approved/denied action at `GET /audit`. No "always allow" by default.
+
+**Optional low-risk pre-approval (off by default).** To cut consent fatigue, the approval popup for a *low-risk* call (a `GET` with no body or query on an allowlisted public-metadata endpoint, e.g. `/repos/:owner/:repo`, `/users/:user`) offers a checkbox: "Allow reads like this on octo/hello for 1 hour" (up to 24h). The grant is per user, per site, per method + path template, and only for the one owner/repo (or user/org) you approved: a grant for one repo never covers another repo or owner (enforced server-side). It shows in "Your doublehub" with Revoke, and is dropped when the site is revoked. While it lasts, `POST /action` returns `200 {preapproved: true, approval}` instead of `202`, so no popup; the call is still logged as `pre-approved`. Everything else is risky and always prompts, enforced server-side: writes, `doublehub.send`, `/user`, secrets, contents, permissions, unknown endpoints, and any pre-approved response that turns out to be private (blocked). Grants can only be created by the signed-in human in the popup, never by the site or an agent. Details in DESIGN.md. Run the server with `node server/server.js` (config via env, see DESIGN.md). Tests: `npm test`.
 
 ## The doublehub site is a doublehub app
 

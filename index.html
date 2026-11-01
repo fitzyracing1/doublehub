@@ -69,19 +69,24 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padd
 <main>
 <section class="hero"><div class="wrap">
 <span class="eyebrow">doublehub · free, open source</span>
-<h1>Turn your service into a GitHub App install link in 2 minutes.</h1>
-<p class="lead">For companies and orgs that want GitHub users to connect to their service. Fill in one form, and you get your own GitHub App, an install link and an "Install on GitHub" badge. No backend needed.</p>
-<div class="ctas"><a class="btn primary" href="#maker">Make my GitHub App</a><a class="btn" href="#dh">Try the sign-in</a></div>
+<h1>Two-layer GitHub authorization for every site and app.</h1>
+<p class="lead">First you sign in with GitHub. Then you separately approve doublehub on each site where it loads, and you can revoke that any time. On top of both layers, every GitHub call or bit of data that leaves waits for your OK.</p>
+<div class="ctas"><a class="btn primary" href="#dh">Sign in with GitHub (demo)</a><a class="btn" href="#maker">Make my GitHub App</a></div>
 </div></section>
 <section class="block" id="how"><div class="wrap">
-<h2>How it works</h2><p class="sub">Three steps. The app is created on your own GitHub account.</p>
+<h2>How it works</h2><p class="sub">Two layers, then your OK for every action. The site never sees your GitHub token.</p>
+<div class="steps">
+<div class="card step"><div class="num">1</div><h3>Layer 1: sign in with GitHub</h3><p>GitHub confirms who you are. The token stays on the doublehub server.</p></div>
+<div class="card step"><div class="num">2</div><h3>Layer 2: approve this site</h3><p>You allow doublehub separately for each exact site where the widget loads, and you can revoke it any time.</p></div>
+<div class="card step"><div class="num">3</div><h3>Approve every action</h3><p>Each GitHub call or bit of data shows you exactly what leaves, then waits for your OK. It's single-use and logged. Optionally, pre-approve low-risk public reads on one repo for up to 24 hours; writes and sends always ask.</p></div>
+</div></div></section>
+<section class="block" id="for-companies"><div class="wrap">
+<h2>For companies: offer it with a GitHub App</h2><p class="sub">The App maker turns your service into a GitHub App install link. The app is created on your own GitHub account or org.</p>
 <div class="steps">
 <div class="card step"><div class="num">1</div><h3>Describe your service</h3><p>Name, URL and only the permissions you need.</p></div>
 <div class="card step"><div class="num">2</div><h3>GitHub creates the app</h3><p>One click sends you to GitHub, which creates the app on your account or org.</p></div>
 <div class="card step"><div class="num">3</div><h3>Share the install link</h3><p>Put the link or badge on your site so users can install your app.</p></div>
-</div>
-<p class="sub">Security: visitors sign in with GitHub, then approve doublehub separately on each site (revocable any time), and every call that leaves needs their OK.</p>
-</div></section>
+</div></div></section>
 <section class="block" id="dh"><div class="wrap">
 <h2>Your doublehub</h2><p class="sub">Your identity, your connected sites, and everything that left.</p>
 <div id="signedout"><div class="card signin">
@@ -93,6 +98,7 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padd
 <div class="grid">
 <div class="card"><h3>Your GitHub identity</h3><p class="hint">doublehub asks you before it calls GitHub.</p><button id="idbtn" type="button">Load my GitHub profile (GET /user)</button><div id="ident"></div></div>
 <div class="card"><h3>Connected sites</h3><p class="hint">Sites you've allowed. Revoke any of them.</p><div class="tbl"><table id="sites"></table></div></div>
+<div class="card"><h3>Pre-approved reads</h3><p class="hint">Low-risk reads you allowed without a popup. They expire on their own; revoke any time.</p><div class="tbl"><table id="pres"></table></div></div>
 <div class="card wide"><h3>Activity log</h3><p class="hint">Everything that left, or tried to leave, through doublehub. <button id="auditbtn" type="button">Refresh</button></p><div class="tbl"><table id="audit"></table></div></div>
 </div></div>
 </div></section>
@@ -143,12 +149,15 @@ function post(p,b){return fetch(S+p,{method:'POST',headers:{'content-type':'appl
 function sess(){return ss.getItem('dh_session')}
 function out(){ss.removeItem('dh_session');ss.removeItem('dh_login');$('signedin').className='hide';$('signedout').className=''}
 function guard(e){if(e.status===401){out();$('dherr').textContent='Your session ended. Sign in again.'}else throw e}
-function show(){$('login').textContent=ss.getItem('dh_login');$('signedout').className='hide';$('signedin').className='';sites();audit()}
+function show(){$('login').textContent=ss.getItem('dh_login');$('signedout').className='hide';$('signedin').className='';sites();pres();audit()}
 function sites(){post('/app/sites',{session:sess()}).then(function(r){
 $('sites').innerHTML='<tr><th>Site</th><th>App</th><th></th></tr>'+(r.sites.map(function(x,i){return '<tr><td>'+esc(x.origin)+'</td><td>'+esc(x.app)+'</td><td><button type="button" data-i="'+i+'">Revoke</button></td></tr>'}).join('')||'<tr><td colspan=3>None</td></tr>');
 $('sites').querySelectorAll('button').forEach(function(b){var x=r.sites[b.dataset.i];b.onclick=function(){
 if(!confirm('Revoke '+x.app+' on '+x.origin+'?'))return;
 post('/app/revoke',{session:sess(),app:x.app,origin:x.origin}).then(function(){sites();audit()},guard).catch(function(e){alert(e.message)})}})},guard).catch(function(e){$('sites').innerHTML='<tr><td>'+esc(e.message)+'</td></tr>'})}
+function pres(){post('/app/preapprovals',{session:sess()}).then(function(r){var t=$('pres');t.innerHTML=r.preapprovals.length?'<tr><th>Site</th><th>Reads</th><th>Until</th><th></th></tr>':'<tr><td>None</td></tr>';
+r.preapprovals.forEach(function(x){var tr=document.createElement('tr');tr.innerHTML='<td>'+esc(x.origin)+'</td><td>'+esc(x.method+' '+x.path+(x.target?' on '+x.target:''))+'</td><td>'+esc(x.expires_at)+'</td><td><button type="button">Revoke</button></td>';t.appendChild(tr);
+tr.querySelector('button').onclick=function(){post('/app/preapproval/revoke',{session:sess(),id:x.id}).then(function(){pres();audit()},guard).catch(function(e){alert(e.message)})}})},guard).catch(function(e){$('pres').innerHTML='<tr><td>'+esc(e.message)+'</td></tr>'})}
 function audit(){post('/app/audit',{session:sess()}).then(function(r){
 $('audit').innerHTML='<tr><th>When</th><th>Decision</th><th>Site</th><th>What</th></tr>'+(r.entries.map(function(e){return '<tr><td>'+esc(e.at)+'</td><td>'+esc(e.decision)+'</td><td>'+esc(e.origin)+'</td><td>'+esc(e.kind==='send'?'send to '+e.dest:e.kind==='consent'?'site connection':e.method+' '+e.path)+'</td></tr>'}).join('')||'<tr><td colspan=4>Nothing yet</td></tr>')},guard).catch(function(e){$('audit').innerHTML='<tr><td>'+esc(e.message)+'</td></tr>'})}
 window.addEventListener('doublehub:grant',function(ev){post('/app/token',{grant:ev.detail.grant}).then(function(t){ss.setItem('dh_session',t.session);ss.setItem('dh_login',t.login);$('dherr').textContent='';show()},function(e){$('dherr').textContent='Sign-in stopped: '+e.message})});

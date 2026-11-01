@@ -33,6 +33,9 @@ function firstPartyHandler(cfg, store, fetchImpl = globalThis.fetch) {
     catch (e) { return out(401, { error: 'session ' + e.message }); }
     if (u.pathname === '/app/audit') return out(200, { entries: store.auditFor(c.sub).reverse() });
     if (u.pathname === '/app/sites') return out(200, { sites: store.consentsFor(c.sub) });
+    if (u.pathname === '/app/preapprovals') return out(200, { preapprovals: store.presFor(c.sub) });
+    if (u.pathname === '/app/preapproval/revoke') { const v = store.revokePre(c.sub, String(b.id || '')); if (!v) return out(404, { error: 'no such pre-approval' });
+      store.audit(c.sub, { app: v.app, origin: v.origin, kind: 'preapproval', decision: 'revoked', method: v.method, path: v.tpl }); return out(200, { revoked: true }); }
     if (u.pathname === '/app/revoke') {
       if (!cfg.apps[b.app] || !store.getConsent(b.app, L.normOrigin(b.origin || ''), c.sub)) return out(404, { error: 'no such connection' });
       store.revoke(b.app, L.normOrigin(b.origin), c.sub);
