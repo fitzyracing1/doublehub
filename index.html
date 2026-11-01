@@ -69,19 +69,24 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padd
 <main>
 <section class="hero"><div class="wrap">
 <span class="eyebrow">doublehub · free, open source</span>
-<h1>Turn your service into a GitHub App install link in 2 minutes.</h1>
-<p class="lead">For companies and orgs that want GitHub users to connect to their service. Fill in one form, and you get your own GitHub App, an install link and an "Install on GitHub" badge. No backend needed.</p>
-<div class="ctas"><a class="btn primary" href="#maker">Make my GitHub App</a><a class="btn" href="#dh">Try the sign-in</a></div>
+<h1>Two-layer GitHub authorization for every site and app.</h1>
+<p class="lead">First you sign in with GitHub. Then you separately approve doublehub on each site where it loads, and you can revoke that any time. On top of both layers, every GitHub call or bit of data that leaves waits for your OK.</p>
+<div class="ctas"><a class="btn primary" href="#dh">Sign in with GitHub (demo)</a><a class="btn" href="#maker">Make my GitHub App</a></div>
 </div></section>
 <section class="block" id="how"><div class="wrap">
-<h2>How it works</h2><p class="sub">Three steps. The app is created on your own GitHub account.</p>
+<h2>How it works</h2><p class="sub">Two layers, then your OK for every action. The site never sees your GitHub token.</p>
+<div class="steps">
+<div class="card step"><div class="num">1</div><h3>Layer 1: sign in with GitHub</h3><p>GitHub confirms who you are. The token stays on the doublehub server.</p></div>
+<div class="card step"><div class="num">2</div><h3>Layer 2: approve this site</h3><p>You allow doublehub separately for each exact site where the widget loads, and you can revoke it any time.</p></div>
+<div class="card step"><div class="num">3</div><h3>Approve every action</h3><p>Each GitHub call or bit of data shows you exactly what leaves, then waits for your OK. It's single-use and logged.</p></div>
+</div></div></section>
+<section class="block" id="for-companies"><div class="wrap">
+<h2>For companies: offer it with a GitHub App</h2><p class="sub">The App maker turns your service into a GitHub App install link. The app is created on your own GitHub account or org.</p>
 <div class="steps">
 <div class="card step"><div class="num">1</div><h3>Describe your service</h3><p>Name, URL and only the permissions you need.</p></div>
 <div class="card step"><div class="num">2</div><h3>GitHub creates the app</h3><p>One click sends you to GitHub, which creates the app on your account or org.</p></div>
 <div class="card step"><div class="num">3</div><h3>Share the install link</h3><p>Put the link or badge on your site so users can install your app.</p></div>
-</div>
-<p class="sub">Security: visitors sign in with GitHub, then approve doublehub separately on each site (revocable any time), and every call that leaves needs their OK.</p>
-</div></section>
+</div></div></section>
 <section class="block" id="dh"><div class="wrap">
 <h2>Your doublehub</h2><p class="sub">Your identity, your connected sites, and everything that left.</p>
 <div id="signedout"><div class="card signin">
