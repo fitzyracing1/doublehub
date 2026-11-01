@@ -1,18 +1,24 @@
 # doublehub
 
-**Turn your service into a GitHub App install link in 2 minutes.**
+**Two-layer GitHub authorization for every site and app.**
 
-For companies and orgs that want GitHub users to connect to their service. Fill in one form, and you get your own GitHub App, an install link and an "Install on GitHub" badge. No backend needed.
+First you sign in with GitHub. Then you separately approve doublehub on each site where it loads, and you can revoke that any time. On top of both layers, every GitHub call or bit of data that leaves waits for your OK.
 
-**[Make your GitHub App →](https://fitzyracing1.github.io/doublehub/#maker)**
+**[Try the sign-in →](https://fitzyracing1.github.io/doublehub/#dh)** · **[Make your GitHub App →](https://fitzyracing1.github.io/doublehub/#maker)**
 
 ## How it works
+
+1. **Layer 1: sign in with GitHub.** GitHub confirms who you are. The token stays on the doublehub server; sites never see it.
+2. **Layer 2: approve this site.** You allow doublehub separately for each exact site where the widget loads, and you can revoke it any time.
+3. **Approve every action.** Each GitHub call or bit of data shows you exactly what leaves, then waits for your OK. It's single-use and logged.
+
+## For companies: offer it with a GitHub App
+
+The App maker turns your service into a GitHub App install link, created on your own GitHub account or org.
 
 1. **Describe your service.** Enter its name, URL, optional webhook URL, and only the permissions/events you need (just `metadata: read` by default). Pick a personal or org owner.
 2. **GitHub creates the app.** Click **Create my GitHub App**. The [manifest](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest) is POSTed to GitHub, which creates the app on your own account or org.
 3. **Share the install link.** Use `https://github.com/apps/<slug>/installations/new` or the copyable "Install on GitHub" Markdown badge.
-
-**Security:** visitors sign in with GitHub, then approve doublehub separately on each site (revocable any time), and every call that leaves needs their explicit OK.
 
 After creation GitHub redirects with a `code`; exchange it within 1 hour via `POST /app-manifests/{code}/conversions` to get the app's ID, private key and webhook secret (needs your own `redirect_url` handler, or set them later in app settings).
 
