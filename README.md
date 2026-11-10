@@ -12,6 +12,18 @@ First you sign in with GitHub. Then you separately approve doublehub on each sit
 2. **Layer 2: approve this site.** You allow doublehub separately for each exact site where the widget loads, and you can revoke it any time.
 3. **Approve every action.** Each GitHub call or bit of data shows you exactly what leaves, then waits for your OK. It's single-use and logged.
 
+## Built with doublehub
+
+Projects that use per-action GitHub writes through doublehub.
+
+**seed-splitter** (private beta) — A local, air-gap-friendly seed backup tool that can also publish stolen-funds evidence to GitHub without ever holding a GitHub token. Every write is a single-use doublehub action: you see the exact issue or file commit, Allow or Deny, and it lands in the doublehub audit log.
+
+- Per-action approval for creating an issue or committing a file
+- Token stays on the doublehub server; seed-splitter only stores a session + app key
+- Denied writes never leave; receipts verified at `/receipt/verify`
+- Publish is optional and off by default
+- Seed splitting stays fully offline and never touches doublehub
+
 ## For companies: offer it with a GitHub App
 
 The App maker turns your service into a GitHub App install link, created on your own GitHub account or org.

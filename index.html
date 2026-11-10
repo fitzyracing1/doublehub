@@ -29,6 +29,12 @@ h2{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .4rem}
 .sub{color:var(--muted);margin:0 0 1.5rem}
 .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:s}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:var(--shadow);min-width:0}
+.showcase{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:16px}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.35rem}
+.card .card-head h3{margin:0}.card-head .eyebrow{margin:0}
+.feats{margin:.55rem 0 0;padding:0 0 0 1.15rem;color:var(--muted);font-size:.95rem}
+.feats li{margin:.2rem 0}
+.card code{font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:.1em .35em;border-radius:5px}
 .step h3{margin:.6rem 0 .3rem;font-size:1.05rem}.step p{margin:0;color:var(--muted);font-size:.95rem}
 .num{width:32px;height:32px;border-radius:50%;background:var(--soft);color:var(--accent);display:grid;place-items:center;font-weight:700}
 #dh .signin{display:flex;flex-direction:column;align-items:flex-start;gap:.9rem}
@@ -65,7 +71,7 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padd
 </style>
 <script src="manifest.js"></script></head><body>
 <header class="top"><div class="wrap"><a class="brand" href="#"><span class="logo" aria-hidden="true">dh</span>doublehub</a>
-<nav><a href="#how" class="hide-sm">How it works</a><a href="#dh">Dashboard</a><a href="#maker">App maker</a></nav></div></header>
+<nav><a href="#how" class="hide-sm">How it works</a><a href="#built-with" class="hide-sm">Built with</a><a href="#dh">Dashboard</a><a href="#maker">App maker</a></nav></div></header>
 <main>
 <section class="hero"><div class="wrap">
 <span class="eyebrow">doublehub · free, open source</span>
@@ -80,6 +86,22 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padd
 <div class="card step"><div class="num">2</div><h3>Layer 2: approve this site</h3><p>You allow doublehub separately for each exact site where the widget loads, and you can revoke it any time.</p></div>
 <div class="card step"><div class="num">3</div><h3>Approve every action</h3><p>Each GitHub call or bit of data shows you exactly what leaves, then waits for your OK. It's single-use and logged. Optionally, pre-approve low-risk public reads on one repo for up to 24 hours; writes and sends always ask.</p></div>
 </div></div></section>
+<section class="block" id="built-with"><div class="wrap">
+<h2>Built with doublehub</h2><p class="sub">Projects that use per-action GitHub writes through doublehub.</p>
+<div class="showcase">
+<div class="card">
+<div class="card-head"><h3>seed-splitter</h3><span class="eyebrow">private beta</span></div>
+<p class="hint">A local, air-gap-friendly seed backup tool that can also publish stolen-funds evidence to GitHub without ever holding a GitHub token. Every write is a single-use doublehub action: you see the exact issue or file commit, Allow or Deny, and it lands in the doublehub audit log.</p>
+<ul class="feats">
+<li>Per-action approval for creating an issue or committing a file</li>
+<li>Token stays on the doublehub server; seed-splitter only stores a session + app key</li>
+<li>Denied writes never leave; receipts verified at <code>/receipt/verify</code></li>
+<li>Publish is optional and off by default</li>
+<li>Seed splitting stays fully offline and never touches doublehub</li>
+</ul>
+</div>
+</div>
+</div></section>
 <section class="block" id="for-companies"><div class="wrap">
 <h2>For companies: offer it with a GitHub App</h2><p class="sub">The App maker turns your service into a GitHub App install link. The app is created on your own GitHub account or org.</p>
 <div class="steps">
