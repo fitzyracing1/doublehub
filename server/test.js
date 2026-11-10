@@ -10,6 +10,16 @@ assert(!E.acceptMessage({ origin: 'https://evil.dev', source: pop, data: { type:
 assert(!E.acceptMessage({ origin: so, source: {}, data: { type: 'doublehub:grant', grant: 'a.b' } }, so, pop));
 assert(!E.acceptMessage({ origin: so, source: pop, data: { type: 'x' } }, so, pop));
 assert.throws(() => E.authorizeUrl('http://auth.dh', 'acme', 'https://acme.dev'));
+assert(E.isConfigured('https://auth.dh', 'acme'));
+assert(E.isConfigured('https://doublehub-production.up.railway.app', 'doublehub'));
+assert(!E.isConfigured('https://YOUR-DOUBLEHUB-SERVER', 'acme'), 'docs placeholder is not a server');
+assert(!E.isConfigured('https://auth.example.com', 'acme'), 'example.com is not a demo backend');
+assert(!E.isConfigured('https://example.org', 'acme'));
+assert(!E.isConfigured('', 'acme'));
+assert(!E.isConfigured('https://auth.dh', ''));
+assert(!E.isConfigured('http://auth.dh', 'acme'), 'http non-localhost rejected');
+assert.deepStrictEqual(E.widgetState({ server: 'https://auth.dh', app: 'acme' }), { ready: true, disabled: false, label: 'Sign in with GitHub' });
+assert.deepStrictEqual(E.widgetState({ server: 'https://YOUR-DOUBLEHUB-SERVER', app: 'acme', label: 'Sign in with GitHub' }), { ready: false, disabled: true, label: 'Sign-in not configured' });
 // state + PKCE
 const { verifier, challenge } = L.pkce();
 assert.strictEqual(challenge, L.challengeFor(verifier)); assert(/^[\w-]{43}$/.test(challenge));
@@ -30,6 +40,9 @@ st.grantConsent('acme', 'https://acme.dev', '1', {}); const c = L.verifyGrant(g,
 assert(!st.isRevoked(c)); st.revoke('acme', 'https://acme.dev', '1', c.jti); assert(st.isRevoked(c));
 // end-to-end over HTTP with a fake GitHub
 (async () => {
+  await E.start({ server: 'https://YOUR-DOUBLEHUB-SERVER', app: 'acme' }).then(
+    () => { throw new Error('start should reject when not configured'); },
+    e => { assert.match(e.message, /not configured/); });
   const cfg = { secret: SECRET, base: 'http://127.0.0.1:0', apps: { acme: { ...app, client_id: 'cid', client_secret: 'cs', app_key: 'k'.repeat(32) } } };
   let sentVerifier;
   const fake = async (url, o) => url.includes('access_token') ? (sentVerifier = JSON.parse(o.body).code_verifier, { json: async () => ({ access_token: 'gho_t' }) }) : { json: async () => ({ id: 7, login: 'octo' }) };

@@ -1,4 +1,4 @@
-const M=require('./manifest.js'),assert=require('assert'),{execFileSync}=require('child_process');
+const M=require('./manifest.js'),assert=require('assert'),{execFileSync}=require('child_process'),fs=require('fs'),E=require('./embed.js');
 const ALLOWED=['name','url','hook_attributes','redirect_url','callback_urls','setup_url','description','public','default_events','default_permissions','request_oauth_on_install','setup_on_update'];
 const out=execFileSync('node',['cli.js','--name','Acme Lights','--url','https://acme.dev','--webhook','https://acme.dev/h','--perm','checks=write','--event','check_suite'],{stdio:['ignore','pipe','ignore']}).toString();
 const m=JSON.parse(out);
@@ -9,4 +9,21 @@ const n=M.build({name:'X',url:'https://x.io',events:['push']});assert(!n.hook_at
 assert.throws(()=>M.build({name:'X',url:'ftp://x'}));
 assert.strictEqual(M.createUrl('acme'),'https://github.com/organizations/acme/settings/apps/new');
 assert.strictEqual(M.installUrl('Acme Lights'),'https://github.com/apps/acme-lights/installations/new');
+const html=fs.readFileSync('index.html','utf8'), readme=fs.readFileSync('README.md','utf8'), embed=fs.readFileSync('embed.js','utf8');
+assert(!/\(demo\)/i.test(html), 'site login must not be labeled demo');
+assert(html.includes('Sign in with GitHub'), 'real sign-in CTA');
+assert((html.match(/data-server="https:\/\/doublehub-production\.up\.railway\.app"/g) || []).length >= 2, 'hero and dashboard use the real server');
+assert(html.includes('data-app="doublehub"'));
+assert(!html.includes('href="#dh">Sign in with GitHub'), 'hero CTA is the widget, not a demo jump link');
+assert(html.includes('id="maker"') && html.includes('Create my GitHub App on GitHub'), 'App maker stays');
+assert(html.includes('/app/status'), 'configured probe, not a demo fallback');
+assert(!embed.includes('doublehub-demo') && !embed.includes('DH_DEMO'));
+assert(!E.isConfigured('https://YOUR-DOUBLEHUB-SERVER', 'acme'));
+assert.strictEqual(E.widgetState({ server: 'https://auth.example.com', app: 'acme' }).label, 'Sign-in not configured');
+const fixture=fs.readFileSync('test/fixtures/widget-not-configured.html','utf8');
+assert(fixture.includes('data-server="https://YOUR-DOUBLEHUB-SERVER"'));
+const missing=fs.readFileSync('test/fixtures/widget-missing-server.html','utf8');
+assert(!/data-server=/.test(missing));
+assert.strictEqual(E.widgetState({ app: 'acme', label: 'Sign in with GitHub' }).label, 'Sign-in not configured');
+assert(!/DH_DEMO|doublehub-demo|Try the live doublehub demo/.test(readme));
 console.log('all tests lit');

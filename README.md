@@ -4,7 +4,7 @@
 
 First you sign in with GitHub. Then you separately approve doublehub on each site where it loads, and you can revoke that any time. On top of both layers, every GitHub call or bit of data that leaves waits for your OK.
 
-**[Try the sign-in →](https://fitzyracing1.github.io/doublehub/#dh)** · **[Make your GitHub App →](https://fitzyracing1.github.io/doublehub/#maker)**
+**[Sign in with GitHub →](https://fitzyracing1.github.io/doublehub/#dh)** · **[Make your GitHub App →](https://fitzyracing1.github.io/doublehub/#maker)**
 
 ## How it works
 
@@ -43,6 +43,8 @@ Put this on your page. Visitors authorize GitHub (layer 1), then approve doubleh
 addEventListener('doublehub:grant', e => fetch('/api/doublehub', {method:'POST', body: e.detail.grant}));
 </script>
 ```
+Replace `data-server` with your real doublehub HTTPS URL. There is no demo or example.com fallback: if `data-server` is missing, still the placeholder, or an `example.com` host, the button shows **Sign-in not configured** and does not open a popup.
+
 Your backend redeems the grant at `POST /token` with its app key and gets a doublehub **session** (never the GitHub token).
 
 ### Layer 3: approve everything that leaves
@@ -61,8 +63,8 @@ Your server **must reject data without a receipt** that `POST /receipt/verify` a
 
 ## The doublehub site is a doublehub app
 
-https://fitzyracing1.github.io/doublehub/ signs you in with doublehub itself, as app `doublehub`:
-1. Sign in with GitHub (layer 1).
+https://fitzyracing1.github.io/doublehub/ signs you in with doublehub itself, as app `doublehub` (this is the real GitHub OAuth flow, not a demo):
+1. Sign in with GitHub (layer 1) through the doublehub server at `https://doublehub-production.up.railway.app`.
 2. Approve doublehub for this site (layer 2).
 3. Dashboard: your GitHub identity (a `GET /user` call you approve each time), your doublehub activity log, and your connected sites with Revoke. Every outbound call goes through per-action approval.
 

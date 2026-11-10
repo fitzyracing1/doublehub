@@ -9,10 +9,12 @@ function firstPartyHandler(cfg, store, fetchImpl = globalThis.fetch) {
     const app = cfg.apps[APP], origin = req.headers.origin || '';
     const ok = app && app.app_key && app.origins.includes(origin);
     const hdr = { 'content-type': 'application/json', 'cache-control': 'no-store',
-      ...(ok ? { 'access-control-allow-origin': origin, 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'POST', vary: 'origin' } : {}) };
-    const out = (code, body) => { res.writeHead(code, hdr); res.end(JSON.stringify(body)); return true; };
+      ...(ok ? { 'access-control-allow-origin': origin, 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET, POST, OPTIONS', vary: 'origin' } : {}) };
+    const out = (code, body) => { res.writeHead(code, hdr); res.end(typeof body === 'string' ? body : JSON.stringify(body)); return true; };
     if (!ok) return out(403, { error: 'origin not allowed' });
     if (req.method === 'OPTIONS') return out(204, {});
+    // CORS-friendly probe: the Pages site uses this instead of a demo fallback.
+    if (u.pathname === '/app/status' && req.method === 'GET') return out(204, '');
     if (req.method !== 'POST') return out(405, { error: 'POST only' });
     const b = JSON.parse((await readBody(req)) || '{}');
     const self = (p, body) => fetchImpl('http://127.0.0.1:' + req.socket.localPort + p, { method: 'POST',
