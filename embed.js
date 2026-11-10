@@ -1,7 +1,8 @@
 /* doublehub embed widget.
- * <script src="https://fitzyracing1.github.io/doublehub/embed.js" data-server="https://auth.example.com" data-app="acme"></script>
+ * <script src="https://fitzyracing1.github.io/doublehub/embed.js" data-server="https://YOUR-DOUBLEHUB-SERVER" data-app="acme"></script>
  * Fires window event 'doublehub:grant' with {detail:{grant}}. Send the grant to YOUR backend, which redeems it at /token for a session.
  * Every outbound action then needs a user approval: doublehub.approve(actionId) for GitHub calls, doublehub.send(dest, payload) for data to your server.
+ * No demo fallback: missing, placeholder, or example.com data-server shows "Sign-in not configured".
  */
 (function (root) {
   'use strict';
@@ -19,10 +20,30 @@
     return null;
   }
   function serverOriginOf(s) { var u = new URL(s); if (u.protocol !== 'https:' && u.hostname !== 'localhost') throw new Error('doublehub server must be https'); return u.origin; }
+  // Real server URL only. Placeholders (docs) and example.com are not a demo backend.
+  function isConfigured(server, app) {
+    if (!app || typeof app !== 'string' || !String(app).trim()) return false;
+    if (!server || typeof server !== 'string') return false;
+    var s = String(server).trim();
+    if (!s || /YOUR[-_]?DOUBLEHUB[-_]?SERVER/i.test(s)) return false;
+    try {
+      var host = (new URL(s).hostname || '').toLowerCase();
+      if (host === 'example.com' || /\.example\.(com|org|net)$/.test(host) || host === 'example.org' || host === 'example.net') return false;
+      serverOriginOf(s);
+      return true;
+    } catch (e) { return false; }
+  }
+  var NOT_CONFIGURED = 'Sign-in not configured';
+  function widgetState(ds) {
+    ds = ds || {};
+    if (isConfigured(ds.server, ds.app)) return { ready: true, disabled: false, label: ds.label || 'Sign in with GitHub' };
+    return { ready: false, disabled: true, label: NOT_CONFIGURED };
+  }
   function authorizeUrl(server, app, origin) {
     return serverOriginOf(server) + '/authorize?app=' + encodeURIComponent(app) + '&origin=' + encodeURIComponent(origin);
   }
   function start(opts) {
+    if (!isConfigured(opts && opts.server, opts && opts.app)) return Promise.reject(new Error('doublehub server is not configured'));
     var so = serverOriginOf(opts.server);
     var popup = root.open(authorizeUrl(opts.server, opts.app, root.location.origin), 'doublehub', 'width=520,height=680');
     return new Promise(function (ok, no) {
@@ -64,16 +85,19 @@
         body: JSON.stringify({ payload: payload, receipt: d.receipt, dest: dest }) }).then(function (r) { return { receipt: d.receipt, response: r }; });
     });
   }
-  var api = { acceptMessage: acceptMessage, authorizeUrl: authorizeUrl, sendUrl: sendUrl, start: start, approve: approve, send: send };
+  var api = { acceptMessage: acceptMessage, authorizeUrl: authorizeUrl, sendUrl: sendUrl, start: start, approve: approve, send: send, isConfigured: isConfigured, widgetState: widgetState };
   if (typeof module !== 'undefined') { module.exports = api; return; }
   root.doublehub = api;
   var s = document.currentScript;
-  if (s && s.dataset.server && s.dataset.app) { var o = { server: s.dataset.server, app: s.dataset.app };
+  if (s && s.dataset.server && s.dataset.app && isConfigured(s.dataset.server, s.dataset.app)) { var o = { server: s.dataset.server, app: s.dataset.app };
     api.send = function (dest, payload) { return send(o, dest, payload); };
     api.approve = function (actionId) { return approve({ server: o.server, actionId: actionId }); }; }
-  if (s && s.dataset.server && s.dataset.app) {
-    var b = document.createElement('button'); b.type = 'button'; b.textContent = s.dataset.label || 'Connect with GitHub (doublehub)';
-    b.onclick = function () { start({ server: s.dataset.server, app: s.dataset.app }).then(function (g) {
+  if (s && (s.dataset.server || s.dataset.app || s.dataset.label)) {
+    var st = widgetState(s.dataset);
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = st.label;
+    if (st.disabled) { b.disabled = true; b.setAttribute('aria-disabled', 'true');
+      b.title = 'Set data-server to your doublehub HTTPS URL and data-app to your app id.'; }
+    else b.onclick = function () { start({ server: s.dataset.server, app: s.dataset.app }).then(function (g) {
       root.dispatchEvent(new CustomEvent('doublehub:grant', { detail: { grant: g } })); b.textContent = 'Connected'; },
       function () { b.textContent = 'Not connected'; }); };
     s.parentNode.insertBefore(b, s.nextSibling);

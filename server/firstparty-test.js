@@ -15,6 +15,7 @@ const SECRET = 'x'.repeat(40), KEY = 'd'.repeat(32), O = 'https://fitzyracing1.g
   assert.strictEqual(L.loadConfig({ DH_APPS: '{"doublehub":{}}', DH_APP_KEY_DOUBLEHUB: 'k', GITHUB_CLIENT_SECRET_DOUBLEHUB: 's' }).apps.doublehub.app_key, 'k');
   const off = createServer(mk(false), L.createStore(), fake).listen(0); await new Promise(r => off.on('listening', r));
   assert.strictEqual((await fetch('http://127.0.0.1:' + off.address().port + '/app/token', { method: 'POST', headers: { origin: O } })).status, 404, 'off unless DH_FIRST_PARTY=1');
+  assert.strictEqual((await fetch('http://127.0.0.1:' + off.address().port + '/app/status', { headers: { origin: O } })).status, 404, 'status off unless DH_FIRST_PARTY=1');
   off.close();
   const srv = createServer(mk(true), L.createStore(), fake).listen(0); await new Promise(r => srv.on('listening', r));
   const base = 'http://127.0.0.1:' + srv.address().port, f = (p, o) => fetch(base + p, { redirect: 'manual', ...o });
@@ -22,6 +23,10 @@ const SECRET = 'x'.repeat(40), KEY = 'd'.repeat(32), O = 'https://fitzyracing1.g
   const D = (p, b, origin = O) => f(p, { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify(b) });
   assert.strictEqual((await D('/app/token', {}, 'https://evil.dev')).status, 403, 'other origins refused');
   assert.strictEqual((await f('/app/token', { method: 'OPTIONS', headers: { origin: O } })).headers.get('access-control-allow-origin'), O);
+  const st = await f('/app/status', { headers: { origin: O } });
+  assert.strictEqual(st.status, 204, 'configured probe');
+  assert.strictEqual(st.headers.get('access-control-allow-origin'), O);
+  assert.strictEqual((await f('/app/status', { headers: { origin: 'https://evil.dev' } })).status, 403);
   // layer 1 (GitHub) + layer 2 (approve doublehub for this site)
   const a = await f('/authorize?app=doublehub&origin=' + O), state = new URL(a.headers.get('location')).searchParams.get('state');
   const page = await (await f((await f('/callback?code=c&state=' + state)).headers.get('location'))).text();

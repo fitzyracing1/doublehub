@@ -21,7 +21,7 @@ nav a{color:var(--muted);text-decoration:none;margin-left:1.2rem;font-size:.95re
 .hero p.lead{font-size:clamp(1.05rem,2.6vw,1.25rem);color:var(--muted);max-width:640px;margin:0 auto 1.8rem}
 .ctas{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
 .btn,button{font:inherit;font-weight:600;font-size:.95rem;border-radius:10px;padding:.65rem 1.15rem;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;min-height:44px}
-.btn.primary,#signedout button,form#f button{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary,#signedout button,form#f button,.ctas button{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 button:hover,.btn:hover{filter:brightness(1.06)}button:disabled{opacity:.5;cursor:not-allowed}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 section.block{padding:40px 0}
@@ -71,7 +71,7 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padd
 <span class="eyebrow">doublehub · free, open source</span>
 <h1>Two-layer GitHub authorization for every site and app.</h1>
 <p class="lead">First you sign in with GitHub. Then you separately approve doublehub on each site where it loads, and you can revoke that any time. On top of both layers, every GitHub call or bit of data that leaves waits for your OK.</p>
-<div class="ctas"><a class="btn primary" href="#dh">Sign in with GitHub (demo)</a><a class="btn" href="#maker">Make my GitHub App</a></div>
+<div class="ctas"><script src="embed.js" data-server="https://doublehub-production.up.railway.app" data-app="doublehub" data-label="Sign in with GitHub"></script><a class="btn" href="#maker">Make my GitHub App</a></div>
 </div></section>
 <section class="block" id="how"><div class="wrap">
 <h2>How it works</h2><p class="sub">Two layers, then your OK for every action. The site never sees your GitHub token.</p>
@@ -91,7 +91,7 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padd
 <h2>Your doublehub</h2><p class="sub">Your identity, your connected sites, and everything that left.</p>
 <div id="signedout"><div class="card signin">
 <p>Step 1: sign in with GitHub. Step 2: approve doublehub for this site. Every call this site makes for you needs your OK first.</p>
-<script src="embed.js" data-server="https://doublehub-production.up.railway.app" data-app="doublehub" data-label="Sign in with GitHub (doublehub)"></script>
+<script src="embed.js" data-server="https://doublehub-production.up.railway.app" data-app="doublehub" data-label="Sign in with GitHub"></script>
 <p class="err" id="dherr"></p></div></div>
 <div id="signedin" class="hide">
 <div class="userbar"><p>Signed in as <b id="login"></b></p><button id="signout" type="button">Sign out</button></div>
@@ -166,7 +166,7 @@ $('idbtn').onclick=function(){$('ident').textContent='Waiting for your approval.
 post('/app/identity/request',{session:sess()}).then(function(a){id=a.action_id;return doublehub.approve(id)})
 .then(function(ap){return post('/app/identity',{session:sess(),action_id:id,approval:ap})})
 .then(function(r){var u=r.user;$('ident').innerHTML=(u.avatar_url&&/^https:\/\//.test(u.avatar_url)?'<img src="'+esc(u.avatar_url)+'" width=48 height=48 alt=""> ':'')+'<a href="'+esc(/^https:\/\//.test(u.html_url||'')?u.html_url:'#')+'">'+esc(u.login)+'</a> '+esc(u.name||'')+'<br><small>'+esc(u.public_repos)+' public repos, '+esc(u.followers)+' followers, on GitHub since '+esc((u.created_at||'').slice(0,10))+'</small>';audit()},function(e){$('ident').textContent='Stopped: '+e.message;if(e.status===401)guard(e);audit()})};
-fetch(S+'/app/token',{method:'OPTIONS'}).then(function(r){if(!r.ok)$('dherr').textContent='Sign-in is not switched on yet on the doublehub server. The App maker below still works.'}).catch(function(){$('dherr').textContent='The doublehub server is unreachable right now. The App maker below still works.'});
+fetch(S+'/app/status').then(function(r){if(r.ok||r.status===405)return;$('dherr').textContent='Sign-in is not configured on the doublehub server. The App maker below still works.'}).catch(function(){$('dherr').textContent='The doublehub server is unreachable right now. The App maker below still works.'});
 if(sess())show();
 })();
 </script></body></html>
